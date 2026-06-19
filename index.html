@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Pose Tester | Webcam Keypoints for 3D Avatars</title>
+    <meta
+      name="description"
+      content="A local webcam pose and face keypoint tester for 3D avatar and pose transfer workflows."
+    />
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1675471629/holistic.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-label="Live pose tester">
+        <header class="topbar">
+          <div>
+            <h1>Live Pose Tester</h1>
+            <p>Webcam keypoints for your 3D avatar engine.</p>
+          </div>
+          <div class="status" id="status" role="status" aria-live="polite">
+            Loading models...
+          </div>
+        </header>
+
+        <section class="control-strip" aria-label="Tracker controls">
+          <label class="field">
+            <span>Source</span>
+            <select id="source">
+              <option value="camera" selected>Camera</option>
+              <option value="video">Video File</option>
+            </select>
+          </label>
+
+          <label class="field file-field">
+            <span>Load Video</span>
+            <input id="videoFile" type="file" accept="video/*" />
+          </label>
+
+          <label class="field">
+            <span>Tracking Mode</span>
+            <select id="mode">
+              <option value="face">Face Only</option>
+              <option value="body">Whole Body</option>
+              <option value="both" selected>Face + Body</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Visual Style</span>
+            <select id="visualStyle">
+              <option value="glow">Neon Glow Lines</option>
+              <option value="skeleton" selected>Clean Skeleton</option>
+            </select>
+          </label>
+
+          <div class="button-row" aria-label="Export controls">
+            <button id="copyKeypoints" type="button" disabled>Copy JSON</button>
+            <button id="playVideo" type="button" disabled>Play Video</button>
+            <button id="restartVideo" type="button" disabled>Restart Video</button>
+            <button id="downloadSnapshot" type="button">Download Snapshot</button>
+            <button id="retryCamera" type="button">Retry Camera</button>
+          </div>
+        </section>
+
+        <section class="stage-grid">
+          <div class="stage-panel">
+            <canvas id="output" width="1280" height="720" aria-label="Annotated webcam output"></canvas>
+            <div class="stage-footer">
+              <span id="frameMeta">Waiting for camera...</span>
+              <span>Normalized coordinates: 0-1</span>
+            </div>
+          </div>
+
+          <section class="avatar-panel" aria-label="Mushy AI avatar viewport">
+            <div class="avatar-header">
+              <h2>Mushy AI Avatar</h2>
+              <label class="avatar-style-field">
+                <span class="visually-hidden">Avatar style</span>
+                <select id="avatarStyle">
+                  <option value="mushy" selected>Mushy Rig</option>
+                  <option value="character">3D Character</option>
+                </select>
+              </label>
+              <span id="avatarMeta">Starting avatar...</span>
+            </div>
+            <div id="avatarMount" class="avatar-mount" aria-label="3D avatar model"></div>
+          </section>
+        </section>
+
+        <section class="inspector" aria-label="Live keypoint tables">
+          <div class="inspector-header">
+            <h2>Live Keypoints</h2>
+            <span id="detectionState">Idle</span>
+          </div>
+          <div class="kp-grid">
+            <div class="kp-group">
+              <h3>Body</h3>
+              <div class="kp-group-row">
+                <canvas id="bodySkeleton" class="kp-skel" width="240" height="320"
+                  aria-label="Body skeleton preview"></canvas>
+                <div id="bodyTable" class="kp-table-wrap">Waiting for detection...</div>
+              </div>
+            </div>
+            <div class="kp-group">
+              <h3>Face</h3>
+              <div class="kp-group-row">
+                <canvas id="faceSkeleton" class="kp-skel" width="240" height="320"
+                  aria-label="Face mesh preview"></canvas>
+                <div id="faceTable" class="kp-table-wrap">Waiting for detection...</div>
+              </div>
+            </div>
+          </div>
+          <p>
+            Stand back for full-body tracking. Move closer when you need facial detail.
+          </p>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>
