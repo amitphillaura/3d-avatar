@@ -13,7 +13,8 @@ builds on push but does not deploy anywhere.
 cd "/Users/amit/Projects/3d Avatar"
 npm install
 npm run dev -- --port 5173          # development
-npm run start                       # local production (build + preview on :5180)
+npm run start                       # manual: build + serve on :5180
+npm run autostart:install           # login autostart (macOS launchd)
 npm run build
 npm audit --audit-level=low
 ```
@@ -70,7 +71,7 @@ User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 
 **Provider:** none (local machine only)  
 **Production URL:** http://127.0.0.1:5180/  
-**Command:** `npm run start` (or `npm run build && npm run preview`)  
+**Command:** `npm run start` or **`npm run autostart:install`** (macOS login autostart)  
 **Git remote:** https://github.com/amitphillaura/3d-avatar — code only; `.github/workflows/ci.yml` runs build + audit on push, no deploy.
 
 ## Constraints

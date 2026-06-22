@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .DS_Store
+logs/
 public/sample.mp4
 
 # User-dropped Meshy / custom exports (keep README + .gitkeep tracked)

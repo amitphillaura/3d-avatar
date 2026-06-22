@@ -8,7 +8,8 @@ this machine only** — not on GitHub Pages.
 ```bash
 npm install
 npm run dev              # http://127.0.0.1:5173/
-npm run start            # local prod → http://127.0.0.1:5180/
+npm run start            # manual prod → http://127.0.0.1:5180/
+npm run autostart:install   # auto-start on login (macOS)
 ```
 
 ## Git

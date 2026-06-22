@@ -7,7 +7,11 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 5180",
-    "start": "npm run build && npm run preview"
+    "start": "npm run build && npm run preview",
+    "autostart:install": "bash scripts/install-autostart.sh install",
+    "autostart:uninstall": "bash scripts/install-autostart.sh uninstall",
+    "autostart:status": "bash scripts/install-autostart.sh status",
+    "autostart:restart": "bash scripts/install-autostart.sh restart"
   },
   "dependencies": {
     "@mediapipe/drawing_utils": "^0.3.1675466124",

@@ -21,7 +21,8 @@ model gallery below the keypoint inspector.
 cd "/Users/amit/Projects/3d Avatar"
 npm install
 npm run dev -- --port 5173     # development → http://127.0.0.1:5173/
-npm run start                  # local production → http://127.0.0.1:5180/
+npm run start                  # manual prod → http://127.0.0.1:5180/
+npm run autostart:install      # auto on login (macOS)
 npm run build
 npm audit --audit-level=low
 ```
@@ -32,7 +33,7 @@ npm audit --audit-level=low
 |------|--------|
 | Hosted deploy | **None** — user wants prod on this Mac only |
 | Local prod URL | http://127.0.0.1:5180/ |
-| Local prod command | `npm run start` |
+| Local prod command | `npm run start` or `npm run autostart:install` |
 | GitHub | Repo + CI only (`.github/workflows/ci.yml` — build + audit, no Pages) |
 
 Do **not** re-enable GitHub Pages unless the user asks.
