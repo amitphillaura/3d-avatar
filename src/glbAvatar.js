@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OneEuro } from "./avatar.js";
 
-// MediaPipe pose landmark indices we use for retargeting.
 const LM = {
   nose: 0,
   leftShoulder: 11,
@@ -19,9 +18,7 @@ const LM = {
   rightAnkle: 28
 };
 
-// Each driven bone aims along the vector between two MediaPipe landmarks.
-// childBone is used at load time to read the bone's rest "down-the-bone" axis.
-const BONE_MAP = [
+export const MIXAMO_BONE_MAP = [
   { bone: "mixamorigLeftArm", child: "mixamorigLeftForeArm", from: "leftShoulder", to: "leftElbow" },
   { bone: "mixamorigLeftForeArm", child: "mixamorigLeftHand", from: "leftElbow", to: "leftWrist" },
   { bone: "mixamorigRightArm", child: "mixamorigRightForeArm", from: "rightShoulder", to: "rightElbow" },
@@ -32,31 +29,36 @@ const BONE_MAP = [
   { bone: "mixamorigRightLeg", child: "mixamorigRightFoot", from: "rightKnee", to: "rightAnkle" }
 ];
 
-// Match MediaPipe image coords to the viewport: image-left -> screen-left.
-// Same convention as the camera canvas and Live Keypoints skeleton preview.
 const CAL = { sx: 1, sy: -1, sz: -0.4, swapLR: false };
 
 const OPPOSITE = (name) =>
   name.startsWith("left") ? name.replace("left", "right") : name.replace("right", "left");
-
-const CHARACTER_URL = "/models/character.glb";
 
 function landmarkVisible(landmark) {
   return Boolean(landmark && (landmark.visibility ?? 1) > 0.4);
 }
 
 export class CharacterAvatar {
-  constructor(mount, metaElement) {
+  constructor(mount, metaElement, options = {}) {
     this.mount = mount;
     this.metaElement = metaElement;
+    this.modelUrl = options.url || "/models/character.glb";
+    this.modelId = options.id || "character";
+    this.boneMap = options.boneMap || MIXAMO_BONE_MAP;
+    this.defaultClip = options.defaultAnimation || "idle";
+    this.onAnimationsLoaded = options.onAnimationsLoaded;
+
     this.startedAt = performance.now();
     this.lastFrameAt = this.startedAt;
     this.latestTrackedAt = 0;
     this.stopped = false;
     this.ready = false;
+    this.loading = false;
     this.cal = { ...CAL };
+    this.clips = [];
+    this.animationNames = [];
+    this.activeClip = null;
 
-    // Raw mapped targets from the latest MediaPipe pose; smoothed each animation frame.
     this.targets = new Map();
     this.smooth = new Map();
     this.filters = new Map();
@@ -71,13 +73,11 @@ export class CharacterAvatar {
     });
     this.haveSmooth = false;
 
-    // Reusable temporaries to avoid per-frame allocation.
     this._mapped = new THREE.Vector3();
     this._hipMid = new THREE.Vector3();
     this._shMid = new THREE.Vector3();
     this._up = new THREE.Vector3();
     this._headDir = new THREE.Vector3();
-    this._restDir = new THREE.Vector3();
     this._targetDir = new THREE.Vector3();
     this._delta = new THREE.Quaternion();
     this._parentQuat = new THREE.Quaternion();
@@ -99,9 +99,10 @@ export class CharacterAvatar {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.mount.appendChild(this.renderer.domElement);
 
+    this.loader = new GLTFLoader();
     this.createLights();
     this.createWorld();
-    this.loadCharacter();
+    this.loadCharacter(this.modelUrl);
     this.resize();
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -126,18 +127,72 @@ export class CharacterAvatar {
     this.scene.add(grid);
   }
 
-  loadCharacter() {
-    this.metaElement.textContent = "Loading character model...";
-    new GLTFLoader().load(
-      CHARACTER_URL,
+  clearModel() {
+    if (this.mixer) {
+      this.mixer.stopAllAction();
+      this.mixer = null;
+    }
+    this.idleAction = null;
+    this.bones = [];
+    this.clips = [];
+    this.spine = null;
+    this.spineRest = null;
+    this.neck = null;
+    this.neckRest = null;
+    this.animationNames = [];
+    this.activeClip = null;
+    this.ready = false;
+    this.haveSmooth = false;
+    if (this.model) {
+      this.scene.remove(this.model);
+      this.model.traverse((child) => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach((material) => material.dispose());
+        }
+      });
+      this.model = null;
+    }
+  }
+
+  pickDefaultClip() {
+    if (!this.animationNames.length) return null;
+    if (this.animationNames.includes(this.defaultClip)) return this.defaultClip;
+    const idle = this.animationNames.find((name) => /idle/i.test(name));
+    return idle || this.animationNames[0];
+  }
+
+  setAnimation(clipName) {
+    if (!this.mixer || !clipName) return false;
+    const clip = this.clips.find((entry) => entry.name === clipName);
+    if (!clip) return false;
+    if (this.idleAction) this.idleAction.stop();
+    this.idleAction = this.mixer.clipAction(clip);
+    this.idleAction.reset().play();
+    this.activeClip = clipName;
+    return true;
+  }
+
+  loadCharacter(url) {
+    if (this.loading) return;
+    this.loading = true;
+    this.modelUrl = url;
+    this.clearModel();
+    this.metaElement.textContent = "Loading model...";
+
+    this.loader.load(
+      url,
       (gltf) => {
+        this.loading = false;
         this.model = gltf.scene;
         this.scene.add(this.model);
+        this.clips = gltf.animations;
+        this.animationNames = gltf.animations.map((clip) => clip.name);
 
-        // Find bones by name and capture rest pose data for retargeting.
         this.bones = [];
         this.model.updateMatrixWorld(true);
-        BONE_MAP.forEach((entry) => {
+        this.boneMap.forEach((entry) => {
           const bone = this.model.getObjectByName(entry.bone);
           const child = this.model.getObjectByName(entry.child);
           if (!bone || !child) return;
@@ -160,26 +215,28 @@ export class CharacterAvatar {
         this.neck = this.model.getObjectByName("mixamorigNeck");
         this.neckRest = this.neck ? this.neck.quaternion.clone() : null;
 
-        // Idle animation plays when nobody is being tracked.
         this.mixer = new THREE.AnimationMixer(this.model);
-        const idle = THREE.AnimationClip.findByName(gltf.animations, "idle");
-        if (idle) {
-          this.idleAction = this.mixer.clipAction(idle);
-          this.idleAction.play();
-        }
+        const defaultClip = this.pickDefaultClip();
+        if (defaultClip) this.setAnimation(defaultClip);
 
-        this.ready = true;
-        this.metaElement.textContent = "Character ready - stand in frame";
+        this.ready = this.bones.length > 0;
+        this.metaElement.textContent = this.ready
+          ? `${this.bones.length} bones · ${this.animationNames.length} clips`
+          : this.animationNames.length
+            ? `${this.animationNames.length} clips · no rig bones`
+            : "Loaded · no animations";
+        this.onAnimationsLoaded?.(this.animationNames.slice(), this.activeClip);
       },
       undefined,
       (err) => {
+        this.loading = false;
         console.error("Character load failed:", err);
-        this.metaElement.textContent = "Character failed to load";
+        this.metaElement.textContent = "Failed to load";
+        this.onAnimationsLoaded?.([], null);
       }
     );
   }
 
-  // MediaPipe normalized coords -> avatar world space, via CAL signs.
   mapLandmark(lm, out = this._mapped) {
     const c = this.cal;
     return out.set(
@@ -190,7 +247,7 @@ export class CharacterAvatar {
   }
 
   updatePose(poseLandmarks) {
-    if (!poseLandmarks) return;
+    if (!poseLandmarks || !this.ready) return;
     let visible = 0;
     this.visibleNow = this.visibleNow || new Set();
     this.visibleNow.clear();
@@ -209,7 +266,7 @@ export class CharacterAvatar {
       }
       this.haveSmooth = true;
       this.latestTrackedAt = performance.now();
-      this.metaElement.textContent = `Character tracking ${visible} body points`;
+      this.metaElement.textContent = `Tracking ${visible} pts`;
     }
   }
 
@@ -234,31 +291,24 @@ export class CharacterAvatar {
 
   retarget() {
     const get = (name) => this.smooth.get(name);
-
     const seen = this.visibleNow || new Set();
     const side = (n) => (this.cal.swapLR ? OPPOSITE(n) : n);
 
     this.bones.forEach(({ bone, from, to, restLocalQuat, restWorldQuat, restWorldDir }) => {
       const f = side(from);
       const t = side(to);
-      // Only drive a bone when both its landmarks are visible this frame;
-      // otherwise ease it back to rest so off-screen limbs don't flail.
       if (!seen.has(f) || !seen.has(t)) {
         bone.quaternion.slerp(restLocalQuat, 0.2);
         return;
       }
 
       this._targetDir.subVectors(get(t), get(f));
-      // MediaPipe depth is noisy; flatten it so limbs stay in the frontal plane.
       this._targetDir.z *= 0.25;
       if (this._targetDir.lengthSq() < 1e-6) return;
       this._targetDir.normalize();
 
-      // Rotate the bone's rest orientation so its child-direction points at the target.
       this._delta.setFromUnitVectors(restWorldDir, this._targetDir);
       this._desired.multiplyQuaternions(this._delta, restWorldQuat);
-
-      // Convert that desired world orientation into the bone's local space.
       bone.parent.getWorldQuaternion(this._parentQuat);
       this._parentQuat.invert();
       bone.quaternion.multiplyQuaternions(this._parentQuat, this._desired);
@@ -266,7 +316,6 @@ export class CharacterAvatar {
 
     if (this.model) this.model.updateMatrixWorld(true);
 
-    // Torso lean: spine follows the hips -> shoulders line.
     if (this.spine && this.spineRest) {
       this._hipMid.addVectors(get("leftHip"), get("rightHip")).multiplyScalar(0.5);
       this._shMid.addVectors(get("leftShoulder"), get("rightShoulder")).multiplyScalar(0.5);
@@ -276,7 +325,6 @@ export class CharacterAvatar {
       this.spine.rotateZ(THREE.MathUtils.clamp(-lean, -0.5, 0.5));
     }
 
-    // Head: nod/turn from the nose relative to the shoulders.
     if (this.neck && this.neckRest) {
       this._shMid.addVectors(get("leftShoulder"), get("rightShoulder")).multiplyScalar(0.5);
       this._headDir.subVectors(get("nose"), this._shMid);
@@ -301,9 +349,6 @@ export class CharacterAvatar {
     } else if (this.mixer) {
       if (this.idleAction && !this.idleAction.isRunning()) this.idleAction.play();
       this.mixer.update(delta);
-      if (this.ready && performance.now() - this.startedAt > 1500 && this.haveSmooth) {
-        this.metaElement.textContent = "Character idle - waiting for your pose";
-      }
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -311,8 +356,8 @@ export class CharacterAvatar {
   }
 
   resize() {
-    const width = Math.max(this.mount.clientWidth, 320);
-    const height = Math.max(this.mount.clientHeight, 260);
+    const width = Math.max(this.mount.clientWidth, 120);
+    const height = Math.max(this.mount.clientHeight, 120);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
@@ -322,6 +367,7 @@ export class CharacterAvatar {
     this.stopped = true;
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.resizeObserver?.disconnect();
+    this.clearModel();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode === this.mount) {
       this.mount.removeChild(this.renderer.domElement);

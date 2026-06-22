@@ -1,8 +1,8 @@
 # Agent Guide
 
 This project is a Vite + Three.js local pose-transfer prototype. It tracks MediaPipe
-Holistic face/body landmarks from webcam or uploaded video and drives either the
-procedural Mushy rig or a GLB character rig.
+Holistic face/body landmarks from webcam or uploaded video and drives procedural and
+GLB body rigs from a shared model gallery.
 
 ## First Steps
 
@@ -18,61 +18,69 @@ Use `http://127.0.0.1:5173/` or the URL Vite prints. Webcam access requires loca
 HTTPS. If the browser denies camera permission, switch to Video File mode to verify the
 UI and avatar paths.
 
+**Live site:** https://amitphillaura.github.io/3d-avatar/
+
 ## Important Files
 
-- `src/app.js` - app orchestration, MediaPipe pipeline, camera/video handling, keypoint
-  tables, export hooks, and avatar style switching.
-- `src/avatar.js` - procedural Mushy avatar and the reusable `OneEuro` smoothing filter.
-- `src/glbAvatar.js` - GLB character loader and MediaPipe pose retargeting.
-- `src/styles.css` - responsive dark UI styles.
-- `index.html` - app shell and local MediaPipe script tags.
-- `public/mediapipe` - vendored MediaPipe runtime files used by Holistic.
-- `public/models/character.glb` - rigged character model.
-- `references/` and `outputs/` - visual references and generated avatar concepts.
-- `TODO.md` - current open calibration task.
-- `HANDOFF.md` - detailed context and verification notes.
+- `src/app.js` — MediaPipe pipeline, camera/video handling, keypoint tables, JSON export.
+- `src/avatar.js` — procedural Mushy rig and reusable `OneEuro` filter.
+- `src/glbAvatar.js` — `CharacterAvatar`: GLB loader, pose retargeting, animation clips.
+- `src/modelGallery.js` — body/face model card UI; drives all loaded rigs from one pose.
+- `src/modelRegistry.js` — loads `registry.json` and probes which GLB files exist.
+- `public/models/registry.json` — catalog of body/face model slots.
+- `public/models/body/` — drop Meshy/custom body GLBs here (**gitignored**).
+- `public/models/face/` — drop face GLBs here (**gitignored**).
+- `public/models/character.glb` — bundled Mixamo Xbot (committed).
+- `index.html` — full-width media stage + Live Keypoints & Models inspector.
+- `public/mediapipe/` — vendored MediaPipe Holistic runtime.
+- `HANDOFF.md`, `TODO.md` — handoff context and open work.
+
+## Adding a body model (Meshy workflow)
+
+1. In Meshy: rig character, add animations, download **GLB → All animations → single file**.
+2. Save as e.g. `public/models/body/meshy-01.glb` (filename must match `registry.json`).
+3. Optionally add a slot in `public/models/registry.json` under `body`.
+4. In the app, click **Refresh Models** (or reload). Card shows **Ready** + animation list.
+5. All loaded body models mirror your pose; click a card to set `window.__avatar` primary.
+
+User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 
 ## Current Runtime Notes
 
-- MediaPipe scripts and Holistic assets are served locally from `public/mediapipe`.
-- The app no longer uses MediaPipe `camera_utils`; camera capture uses native
-  `navigator.mediaDevices.getUserMedia` plus a `requestAnimationFrame` processing loop.
-- `modelComplexity` is currently `1`, so `public/mediapipe/holistic/pose_landmark_full.tflite`
-  is the required pose model file.
-- 3D Character `CAL` is `{ sx: 1, sy: -1, sz: -0.4, swapLR: false }` — image-left maps to
-  screen-left, matching the skeleton preview.
-- The app exposes dev hooks on `window.__avatar`, `window.__loadVideoURL`,
-  `window.__playVideo`, `window.__processFrame`, and `window.__video` for calibration.
+- MediaPipe is local under `public/mediapipe` (no CDN).
+- Camera uses native `getUserMedia` + `requestAnimationFrame` (not `camera_utils`).
+- `modelComplexity` is `1` → requires `pose_landmark_full.tflite`.
+- 3D Character `CAL`: `{ sx: 1, sy: -1, sz: -0.4, swapLR: false }`.
+- Dev hooks: `window.__avatar`, `window.__modelGallery`, `window.__loadVideoURL`,
+  `window.__playVideo`, `window.__processFrame`, `window.__video`.
 
 ## Verification Checklist
 
 - `npm run build` passes.
 - `npm audit --audit-level=low` reports 0 vulnerabilities.
 - App loads without a browser alert.
-- Camera-denied state is handled in the status panel.
-- Video File mode updates the canvas placeholder and controls.
-- 3D Character mode loads `public/models/character.glb`.
-- Check one narrow viewport around 390 px wide after UI changes.
+- Body model gallery shows Mushy + Xbot; Meshy slots show **Awaiting file** until GLB added.
+- **Refresh Models** rescans after dropping a file in `public/models/body/`.
+- Live Keypoints panel + JSON export still work.
+- Check ~390 px viewport after UI changes.
 
 ## Deployment
 
 **Provider:** GitHub Pages  
 **Repository:** [amitphillaura/3d-avatar](https://github.com/amitphillaura/3d-avatar)  
 **URL:** https://amitphillaura.github.io/3d-avatar/  
-**Secrets:** none (public static site)  
-**Deploy:** push to `main` — `.github/workflows/deploy.yml` builds with `BASE_PATH=/3d-avatar/` and publishes `dist/`
+**Secrets:** none  
+**Deploy:** push to `main` → `.github/workflows/deploy.yml` (`BASE_PATH=/3d-avatar/`)
 
 ```bash
 npm run build
-npm run preview -- --host 127.0.0.1 --port 5180   # local production check
+npm run preview -- --host 127.0.0.1 --port 5180
+gh workflow run deploy.yml   # manual re-deploy
 ```
-
-Manual workflow trigger: `gh workflow run deploy.yml`
 
 ## Constraints
 
 - Keep the keypoint panel and JSON export.
-- Do not remove the local MediaPipe assets unless replacing them with a reliable bundled
-  or hosted deployment strategy.
-- Avoid committing `public/sample.mp4`; it is intentionally gitignored.
-- Keep changes scoped and verify in a real browser, not only with the build.
+- Do not remove local MediaPipe assets without a replacement strategy.
+- Do not commit `public/sample.mp4` or user GLBs in `public/models/body/` / `face/`.
+- Keep `npm run build` green and audit clean; verify in a real browser.

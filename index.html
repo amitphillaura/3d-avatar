@@ -62,59 +62,52 @@
             <button id="restartVideo" type="button" disabled>Restart Video</button>
             <button id="downloadSnapshot" type="button">Download Snapshot</button>
             <button id="retryCamera" type="button">Retry Camera</button>
+            <button id="refreshModels" type="button">Refresh Models</button>
           </div>
         </section>
 
-        <section class="stage-grid">
-          <div class="stage-panel">
-            <canvas id="output" width="1280" height="720" aria-label="Annotated webcam output"></canvas>
-            <div class="stage-footer">
-              <span id="frameMeta">Waiting for camera...</span>
-              <span>Normalized coordinates: 0-1</span>
-            </div>
+        <section class="stage-panel stage-panel--solo" aria-label="Annotated media output">
+          <canvas id="output" width="1280" height="720" aria-label="Annotated webcam output"></canvas>
+          <div class="stage-footer">
+            <span id="frameMeta">Waiting for camera...</span>
+            <span>Normalized coordinates: 0-1</span>
           </div>
-
-          <section class="avatar-panel" aria-label="Mushy AI avatar viewport">
-            <div class="avatar-header">
-              <h2>Mushy AI Avatar</h2>
-              <label class="avatar-style-field">
-                <span class="visually-hidden">Avatar style</span>
-                <select id="avatarStyle">
-                  <option value="mushy" selected>Mushy Rig</option>
-                  <option value="character">3D Character</option>
-                </select>
-              </label>
-              <span id="avatarMeta">Starting avatar...</span>
-            </div>
-            <div id="avatarMount" class="avatar-mount" aria-label="3D avatar model"></div>
-          </section>
         </section>
 
-        <section class="inspector" aria-label="Live keypoint tables">
+        <section class="inspector" aria-label="Live keypoints and models">
           <div class="inspector-header">
-            <h2>Live Keypoints</h2>
+            <h2>Live Keypoints &amp; Models</h2>
             <span id="detectionState">Idle</span>
           </div>
-          <div class="kp-grid">
-            <div class="kp-group">
+
+          <div class="kp-group body-group">
+            <div class="kp-group-top">
               <h3>Body</h3>
-              <div class="kp-group-row">
-                <canvas id="bodySkeleton" class="kp-skel" width="240" height="320"
-                  aria-label="Body skeleton preview"></canvas>
-                <div id="bodyTable" class="kp-table-wrap">Waiting for detection...</div>
-              </div>
+              <p class="kp-group-hint">Click a model card to set the dev-hook primary. All loaded body models mirror your pose.</p>
             </div>
-            <div class="kp-group">
-              <h3>Face</h3>
-              <div class="kp-group-row">
-                <canvas id="faceSkeleton" class="kp-skel" width="240" height="320"
-                  aria-label="Face mesh preview"></canvas>
-                <div id="faceTable" class="kp-table-wrap">Waiting for detection...</div>
-              </div>
+            <div class="kp-data-row">
+              <canvas id="bodySkeleton" class="kp-skel" width="240" height="320"
+                aria-label="Body skeleton preview"></canvas>
+              <div id="bodyTable" class="kp-table-wrap">Waiting for detection...</div>
             </div>
+            <div id="bodyModelGallery" class="model-gallery" aria-label="Body model gallery"></div>
           </div>
-          <p>
-            Stand back for full-body tracking. Move closer when you need facial detail.
+
+          <div class="kp-group face-group">
+            <div class="kp-group-top">
+              <h3>Face</h3>
+              <p class="kp-group-hint">Drop face GLBs in <code>public/models/face/</code> and register them in <code>registry.json</code>.</p>
+            </div>
+            <div class="kp-data-row">
+              <canvas id="faceSkeleton" class="kp-skel" width="240" height="320"
+                aria-label="Face mesh preview"></canvas>
+              <div id="faceTable" class="kp-table-wrap">Waiting for detection...</div>
+            </div>
+            <div id="faceModelGallery" class="model-gallery" aria-label="Face model gallery"></div>
+          </div>
+
+          <p class="inspector-foot">
+            Body exports: <code>public/models/body/</code> · Registry: <code>public/models/registry.json</code>
           </p>
         </section>
       </section>

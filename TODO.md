@@ -1,16 +1,19 @@
 # TODO
 
-## ✅ 3D Character orientation calibration (DONE)
+## ✅ Done
 
-Baked `CAL` in `src/glbAvatar.js`:
+- 3D Character orientation calibration (`CAL`: `sx: 1, sy: -1, sz: -0.4, swapLR: false`)
+- Body model gallery + `public/models/registry.json` + gitignored `body/` / `face/` drop folders
+- GitHub Pages deployment
 
-```js
-{ sx: 1, sy: -1, sz: -0.4, swapLR: false }
-```
+## Open (next UX / media)
 
-`sx: 1` maps image-left to screen-left on the frontal rig viewport — the same
-convention as the camera canvas and Live Keypoints skeleton preview. The previous
-`sx: -1` default (and the short-lived camera “mirror” preset) put the anatomical
-left arm on the right side of the viewport.
+- **Unified media view** — single viewport for camera + video player + still photos; opt-in camera toggle (no auto-start).
+- **Play video / Photos library** — reliable video playback; `image/*` + `video/*` file picker.
+- **Neon glow tuning** — trails still read heavy; thin down stroke stack.
+- **Face retargeting** — face row currently static GLB preview only.
 
-Live override: `window.__avatar.cal = { sx, sy, sz, swapLR }`.
+## Open (models)
+
+- **Meshy bone mapping** — confirm Meshy rig bone names; extend `glbAvatar.js` if not Mixamo.
+- **Face model slot** — wire face landmarks to a head rig when exports are ready.

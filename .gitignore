@@ -2,3 +2,14 @@ node_modules/
 dist/
 .DS_Store
 public/sample.mp4
+
+# User-dropped Meshy / custom exports (keep README + .gitkeep tracked)
+public/models/body/**
+!public/models/body/
+!public/models/body/README.md
+!public/models/body/.gitkeep
+
+public/models/face/**
+!public/models/face/
+!public/models/face/README.md
+!public/models/face/.gitkeep

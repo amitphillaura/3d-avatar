@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "body": [
+    {
+      "id": "xbot",
+      "name": "Xbot",
+      "file": "character.glb",
+      "rig": "mixamo",
+      "defaultAnimation": "idle",
+      "notes": "Included Mixamo rig with idle, walk, run, and more."
+    },
+    {
+      "id": "meshy-01",
+      "name": "Meshy Character 1",
+      "file": "body/meshy-01.glb",
+      "rig": "mixamo",
+      "defaultAnimation": "idle",
+      "notes": "Drop your first Meshy export here (rigged GLB, all animations in one file)."
+    },
+    {
+      "id": "meshy-02",
+      "name": "Meshy Character 2",
+      "file": "body/meshy-02.glb",
+      "rig": "mixamo",
+      "defaultAnimation": "idle",
+      "notes": "Optional second body model."
+    },
+    {
+      "id": "meshy-03",
+      "name": "Meshy Character 3",
+      "file": "body/meshy-03.glb",
+      "rig": "mixamo",
+      "defaultAnimation": "idle",
+      "notes": "Optional third body model."
+    }
+  ],
+  "face": [
+    {
+      "id": "face-01",
+      "name": "Face Model 1",
+      "file": "face/face-01.glb",
+      "rig": "none",
+      "defaultAnimation": "idle",
+      "notes": "Future face-rig slot. Static GLB preview until face retargeting is added."
+    }
+  ]
+}

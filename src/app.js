@@ -1,6 +1,6 @@
 import "./styles.css";
 import { MushyAvatar } from "./avatar.js";
-import { CharacterAvatar } from "./glbAvatar.js";
+import { ModelGallery } from "./modelGallery.js";
 
 const videoElement = document.createElement("video");
 videoElement.setAttribute("playsinline", "");
@@ -25,16 +25,16 @@ const snapshotButton = document.getElementById("downloadSnapshot");
 const retryButton = document.getElementById("retryCamera");
 const frameMetaEl = document.getElementById("frameMeta");
 const detectionStateEl = document.getElementById("detectionState");
-const avatarMountEl = document.getElementById("avatarMount");
-const avatarMetaEl = document.getElementById("avatarMeta");
-const avatarStyleSelect = document.getElementById("avatarStyle");
+const bodyModelGalleryEl = document.getElementById("bodyModelGallery");
+const faceModelGalleryEl = document.getElementById("faceModelGallery");
+const refreshModelsButton = document.getElementById("refreshModels");
 
 let latestResults = null;
 let cameraInstance = null;
 let glowTrails = [];
 let frameTick = 0;
 let holistic = null;
-let mushyAvatar = null;
+let modelGallery = null;
 let videoObjectUrl = null;
 let videoLoopId = null;
 let cameraLoopId = null;
@@ -471,7 +471,7 @@ async function processCurrentFrame() {
   frameTick += 1;
   try {
     await holistic.send({ image: videoElement });
-    mushyAvatar?.updatePose(latestResults?.poseLandmarks);
+    modelGallery?.updatePose(latestResults?.poseLandmarks);
     drawResults(videoElement);
     updateKeypointsPanel();
     frameMetaEl.textContent = `${videoElement.videoWidth || 1280} x ${videoElement.videoHeight || 720} ${getSourceLabel()}`;
@@ -800,9 +800,11 @@ function bindEvents() {
     setStatus(`Visual style: ${visualStyleSelect.options[visualStyleSelect.selectedIndex].text}`);
   });
 
-  avatarStyleSelect.addEventListener("change", () => {
-    createAvatar(avatarStyleSelect.value);
-    setStatus(`Avatar: ${avatarStyleSelect.options[avatarStyleSelect.selectedIndex].text}`);
+  refreshModelsButton?.addEventListener("click", async () => {
+    setStatus("Refreshing model gallery...", "warning");
+    modelGallery?.dispose();
+    await initModelGallery();
+    setStatus("Model gallery refreshed.");
   });
 
   modeSelect.addEventListener("change", () => {
@@ -832,12 +834,17 @@ function initCanvasPlaceholder(message = "Camera preview will appear here") {
   canvasCtx.fillText(message, canvasElement.width / 2, canvasElement.height / 2);
 }
 
-function createAvatar(style) {
-  mushyAvatar?.dispose?.();
-  mushyAvatar = style === "character"
-    ? new CharacterAvatar(avatarMountEl, avatarMetaEl)
-    : new MushyAvatar(avatarMountEl, avatarMetaEl);
-  window.__avatar = mushyAvatar;
+async function initModelGallery() {
+  modelGallery = new ModelGallery({
+    bodyMount: bodyModelGalleryEl,
+    faceMount: faceModelGalleryEl,
+    onPrimaryChange: (avatar) => {
+      window.__avatar = avatar;
+    }
+  });
+  await modelGallery.init();
+  window.__avatar = modelGallery.getPrimaryAvatar();
+  window.__modelGallery = modelGallery;
 }
 
 // Dev hook: load a same-origin video URL through the normal video pipeline.
@@ -861,7 +868,6 @@ function loadVideoURL(url) {
 function init() {
   bindEvents();
   initCanvasPlaceholder();
-  createAvatar(avatarStyleSelect.value);
   window.__loadVideoURL = loadVideoURL;
   window.__playVideo = playLoadedVideo;
   window.__processFrame = processCurrentFrame;
@@ -879,7 +885,14 @@ function init() {
 
   setStatus("Loading models... first run can take a few seconds.", "warning");
   setupModels();
-  window.setTimeout(startCamera, 800);
+  initModelGallery()
+    .catch((error) => {
+      console.error(error);
+      setStatus("Model gallery failed to load. Check public/models/registry.json.", "danger");
+    })
+    .finally(() => {
+      window.setTimeout(startCamera, 800);
+    });
 }
 
 window.addEventListener("load", init);

@@ -1,6 +1,9 @@
 # Live Pose Tester
 
-A local camera/video tester for MediaPipe face/body keypoints, neon motion trails, and a live 3D avatar. It is intended as a quick debugging surface for 3D avatar and pose-transfer experiments.
+A local camera/video tester for MediaPipe face/body keypoints, neon motion trails, and
+live 3D avatars. Built as a debugging surface for pose-transfer and Meshy character work.
+
+**Live:** https://amitphillaura.github.io/3d-avatar/
 
 ## Run
 
@@ -9,34 +12,38 @@ npm install
 npm run dev
 ```
 
-Then open the localhost URL Vite prints in your browser. Webcam access requires localhost or HTTPS.
+Open the localhost URL Vite prints. Webcam needs localhost or HTTPS.
 
-## Build / Preview
+## Build / deploy
 
 ```bash
 npm run build
 npm run preview -- --port 5180
 ```
 
-`npm run build` writes the production bundle to `dist/`. Production is hosted on
-[GitHub Pages](https://amitphillaura.github.io/3d-avatar/) (auto-deploy from `main`).
-Local preview: `npm run preview -- --port 5180`.
+Pushes to `main` auto-deploy to GitHub Pages via `.github/workflows/deploy.yml`.
 
-## Agent Handoff
+## Adding 3D models
 
-Start with `AGENTS.md`, then read `HANDOFF.md` and `TODO.md`. MediaPipe is vendored under
-`public/mediapipe` so the app does not depend on CDN scripts at runtime.
+1. Export a **rigged GLB** from Meshy (all animations in one file).
+2. Place it in `public/models/body/` (e.g. `meshy-01.glb`).
+3. Register the slot in `public/models/registry.json` if needed.
+4. Click **Refresh Models** in the app.
+
+User exports in `public/models/body/` and `public/models/face/` are gitignored and stay local.
 
 ## Features
 
-- Face, body, or combined tracking modes
-- Camera or uploaded video-file source
-- Neon glow trails and clean skeleton styles
-- Live Mushy AI 3D avatar viewport powered by Three.js
-- Avatar body rig follows MediaPipe pose landmarks when you are visible in frame
-- Avatar style switch: the procedural Mushy rig, or a rigged 3D character (GLB in
-  `public/models/character.glb`) retargeted live from pose, with an idle clip when untracked
-- Live compact JSON panel for key avatar landmarks
-- Full keypoint JSON copy for downstream engine work
-- Annotated snapshot download
-- Responsive layout for smaller screens
+- Face, body, or combined Holistic tracking
+- Camera or uploaded video source
+- Neon glow or clean skeleton overlay on the media canvas
+- **Live Keypoints & Models** — body/face skeleton previews, tables, JSON export
+- **Body model gallery** — Mushy + multiple GLB characters in a row (pose-synced)
+- Per-model **animation** dropdown when not live-tracking
+- Responsive layout
+
+## Docs
+
+- `AGENTS.md` — agent quick-start
+- `HANDOFF.md` — full project context
+- `TODO.md` — open tasks
