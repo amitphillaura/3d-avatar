@@ -37,6 +37,7 @@ let holistic = null;
 let mushyAvatar = null;
 let videoObjectUrl = null;
 let videoLoopId = null;
+let cameraLoopId = null;
 let isProcessingFrame = false;
 let videoLoaded = false;
 
@@ -47,7 +48,7 @@ const BODY_GLOW_PATHS = [
 ];
 
 const FACE_GLOW_POINTS = [10, 33, 61, 152, 291, 263];
-const MEDIAPIPE_HOLISTIC_VERSION = "0.5.1675471629";
+const MEDIAPIPE_HOLISTIC_ASSET_PATH = "/mediapipe/holistic";
 
 const KEY_LANDMARKS = {
   nose: 0,
@@ -80,8 +81,7 @@ const FACE_LANDMARKS = {
 
 function hasMediaPipeGlobals() {
   return Boolean(
-    window.Camera &&
-      window.Holistic &&
+    window.Holistic &&
       window.drawConnectors &&
       window.drawLandmarks
   );
@@ -488,8 +488,7 @@ async function onFrame() {
 
 function setupModels() {
   holistic = new window.Holistic({
-    locateFile: (file) =>
-      `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@${MEDIAPIPE_HOLISTIC_VERSION}/${file}`
+    locateFile: (file) => `${MEDIAPIPE_HOLISTIC_ASSET_PATH}/${file}`
   });
 
   holistic.setOptions({
@@ -528,6 +527,13 @@ function cancelVideoLoop() {
   videoLoopId = null;
 }
 
+function cancelCameraLoop() {
+  if (!cameraLoopId) return;
+
+  window.cancelAnimationFrame(cameraLoopId);
+  cameraLoopId = null;
+}
+
 function scheduleVideoLoop() {
   cancelVideoLoop();
   if (sourceSelect.value !== "video" || videoElement.paused || videoElement.ended) return;
@@ -546,21 +552,37 @@ function scheduleVideoLoop() {
 }
 
 function stopCamera() {
-  if (cameraInstance) {
-    cameraInstance.stop();
-    cameraInstance = null;
-  }
+  cancelCameraLoop();
 
   const stream = videoElement.srcObject;
   if (stream?.getTracks) {
     stream.getTracks().forEach((track) => track.stop());
   }
+
+  if (cameraInstance?.stream && cameraInstance.stream !== stream) {
+    cameraInstance.stream.getTracks().forEach((track) => track.stop());
+  }
+
+  cameraInstance = null;
   videoElement.srcObject = null;
 }
 
-function startCamera() {
+function scheduleCameraLoop() {
+  cancelCameraLoop();
+
+  if (sourceSelect.value !== "camera" || !cameraInstance) return;
+
+  cameraLoopId = window.requestAnimationFrame(async () => {
+    cameraLoopId = null;
+    await onFrame();
+    scheduleCameraLoop();
+  });
+}
+
+async function startCamera() {
   sourceSelect.value = "camera";
   cancelVideoLoop();
+  cancelCameraLoop();
   videoElement.pause();
   setStatus("Requesting camera access...", "warning");
   resetDetection();
@@ -576,27 +598,44 @@ function startCamera() {
   restartVideoButton.disabled = true;
   retryButton.disabled = false;
 
-  cameraInstance = new window.Camera(videoElement, {
-    onFrame,
-    width: 1280,
-    height: 720
-  });
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("camera access is not supported in this browser");
+    }
 
-  cameraInstance
-    .start()
-    .then(() => {
-      setStatus("Camera active. Move back for full body, closer for face detail.");
-      frameMetaEl.textContent = "Camera active";
-    })
-    .catch((error) => {
-      console.error(error);
-      setStatus(
-        `Camera error: ${error.message || "permission denied"}. Check browser permissions and reload.`,
-        "danger"
-      );
-      frameMetaEl.textContent = "Camera unavailable";
-      setDetectionState("Blocked");
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: "user"
+      }
     });
+
+    if (sourceSelect.value !== "camera") {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    videoElement.srcObject = stream;
+    videoElement.muted = true;
+    videoElement.playsInline = true;
+    await videoElement.play();
+
+    cameraInstance = { stream };
+    setStatus("Camera active. Move back for full body, closer for face detail.");
+    frameMetaEl.textContent = "Camera active";
+    scheduleCameraLoop();
+  } catch (error) {
+    stopCamera();
+    const message = error?.name === "NotAllowedError" ? "permission denied" : error?.message;
+    setStatus(
+      `Camera error: ${message || "camera unavailable"}. Check browser permissions or use Video File mode.`,
+      "danger"
+    );
+    frameMetaEl.textContent = "Camera unavailable";
+    setDetectionState("Blocked");
+  }
 }
 
 function stopVideoPlayback() {

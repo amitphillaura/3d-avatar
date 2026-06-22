@@ -11,6 +11,22 @@ npm run dev
 
 Then open the localhost URL Vite prints in your browser. Webcam access requires localhost or HTTPS.
 
+## Build / Preview
+
+```bash
+npm run build
+npm run preview -- --port 5180
+```
+
+`npm run build` writes the production bundle to `dist/`. There is no hosted deployment
+target configured in this repo yet; `npm run preview` is the current local production
+deployment path.
+
+## Agent Handoff
+
+Start with `AGENTS.md`, then read `HANDOFF.md` and `TODO.md`. MediaPipe is vendored under
+`public/mediapipe` so the app does not depend on CDN scripts at runtime.
+
 ## Features
 
 - Face, body, or combined tracking modes

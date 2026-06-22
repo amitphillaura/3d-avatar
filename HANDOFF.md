@@ -4,12 +4,12 @@ For the next agent/engineer picking this up. Read this first, then `TODO.md`.
 
 ## Where it lives
 - **Project root:** `/Users/amit/Documents/3d Avatar`
-- **Git:** local repo, branch `main`, no remote configured yet. First commit already made.
+- **Git:** local repo, branch `main`, no remote configured yet.
 - **Platform:** macOS. Node + Vite project.
 
 ## What it is
 A Vite web app — a local **pose-transfer prototype**. It uses **MediaPipe Holistic**
-(loaded via CDN `<script>` tags in `index.html`) to track body + face landmarks from a
+(served from local files under `public/mediapipe`) to track body + face landmarks from a
 **webcam or an uploaded video file**, and drives a live **Three.js 3D avatar** from the pose.
 
 Bigger goal (the user's intent): build/use 3D characters that can be **driven by webcam or
@@ -24,10 +24,15 @@ npm run dev -- --port 5173
 # open http://127.0.0.1:5173/   (webcam needs localhost or HTTPS)
 npm run build        # production build (must stay green)
 npm audit --audit-level=low   # currently 0 vulnerabilities
+npm run preview -- --port 5180 # local production preview/deployment check
 ```
 
+There is currently **no git remote and no hosted deployment provider configured**. A hosted
+deploy will need a target such as GitHub Pages, Vercel, Netlify, Cloudflare Pages, etc.
+
 ## Key files
-- `index.html` — layout, MediaPipe CDN scripts, control strip, two stage panels
+- `AGENTS.md` — quick-start instructions for Cursor/Codex/Claude-style agents.
+- `index.html` — layout, local MediaPipe scripts, control strip, two stage panels
   (camera + rig), and the Live Keypoints section.
 - `src/app.js` — capture pipeline, drawing, video/camera handling, keypoint tables +
   skeleton previews, JSON export. Contains dev hooks on `window.__*` (see below).
@@ -35,6 +40,8 @@ npm audit --audit-level=low   # currently 0 vulnerabilities
 - `src/glbAvatar.js` — `CharacterAvatar`: loads a Mixamo-rigged GLB and **retargets**
   MediaPipe pose → bone rotations. This is where the open calibration work is.
 - `src/styles.css` — all styling (dark neon theme).
+- `public/mediapipe/` — vendored MediaPipe scripts, wasm/data assets, and full pose
+  model. This avoids CDN startup failures.
 - `public/models/character.glb` — Mixamo "Xbot" rig (committed). Bone names lost their
   colons via GLTFLoader → use `mixamorigLeftArm`, not `mixamorig:LeftArm`.
 - `public/sample.mp4` — Pexels dance clip for calibration. **Gitignored** (re-download if
@@ -43,6 +50,8 @@ npm audit --audit-level=low   # currently 0 vulnerabilities
 
 ## Current feature state
 - ✅ Camera mode + Video File mode (MediaPipe runs on both).
+- ✅ Camera permission denial is handled inside the app without a blocking browser alert.
+- ✅ MediaPipe runtime is local instead of CDN-dependent.
 - ✅ Mushy rig: One-Euro smoothing, neck/hands/feet, head tilt, visibility holding.
 - ✅ 3D Character: GLB loads, 8 bones bound, depth-damped, per-bone visibility gating.
   Retargeting **engine is verified correct** (bone actual direction == target).
@@ -60,11 +69,17 @@ down empirically. A live tuning harness exists:
 Open question for the user: **mirror** (webcam-natural) vs **direct copy** (matches source).
 
 ## Verifying changes (important)
-The user has the **Claude-in-Chrome** extension; the most reliable way to verify is to
-drive the real browser at http://127.0.0.1:5173/ with the webcam or `sample.mp4`. Note:
-the continuous rAF render loop makes `preview_eval`/idle-wait time out — use
-`javascript_tool` + screenshots instead, and drive the deterministic video for repeatable
-comparisons.
+Drive a real browser at http://127.0.0.1:5173/ with the webcam or a video file. If camera
+permission is denied in the automation browser, verify that the app shows a handled camera
+error, then switch to Video File mode and 3D Character mode. The continuous rAF render loop
+can make idle-wait checks time out, so prefer direct DOM/screenshot checks and deterministic
+video input for repeatable comparisons.
+
+Baseline checks used most recently:
+- `npm run build`
+- `npm audit --audit-level=low`
+- Browser smoke at `http://127.0.0.1:5180/`
+- Desktop first screen, Video File mode, 3D Character load, and 390 px mobile viewport
 
 ## Conventions
 - Match existing code style; avoid unrelated rewrites.
