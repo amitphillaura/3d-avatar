@@ -4,21 +4,26 @@ This project is a Vite + Three.js local pose-transfer prototype. It tracks Media
 Holistic face/body landmarks from webcam or uploaded video and drives procedural and
 GLB body rigs from a shared model gallery.
 
+**Production runs on this machine only** — not hosted. GitHub stores the repo code; CI
+builds on push but does not deploy anywhere.
+
 ## First Steps
 
 ```bash
 cd "/Users/amit/Projects/3d Avatar"
 npm install
-npm run dev -- --port 5173
+npm run dev -- --port 5173          # development
+npm run start                       # local production (build + preview on :5180)
 npm run build
 npm audit --audit-level=low
 ```
 
-Use `http://127.0.0.1:5173/` or the URL Vite prints. Webcam access requires localhost or
-HTTPS. If the browser denies camera permission, switch to Video File mode to verify the
-UI and avatar paths.
+| Mode | URL |
+|------|-----|
+| Dev | http://127.0.0.1:5173/ |
+| **Local prod** | http://127.0.0.1:5180/ |
 
-**Live site:** https://amitphillaura.github.io/3d-avatar/
+Webcam needs localhost or HTTPS. If camera is denied, use Video File mode.
 
 ## Important Files
 
@@ -41,14 +46,13 @@ UI and avatar paths.
 2. Save as e.g. `public/models/body/meshy-01.glb` (filename must match `registry.json`).
 3. Optionally add a slot in `public/models/registry.json` under `body`.
 4. In the app, click **Refresh Models** (or reload). Card shows **Ready** + animation list.
-5. All loaded body models mirror your pose; click a card to set `window.__avatar` primary.
 
 User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 
 ## Current Runtime Notes
 
 - MediaPipe is local under `public/mediapipe` (no CDN).
-- Camera uses native `getUserMedia` + `requestAnimationFrame` (not `camera_utils`).
+- Camera uses native `getUserMedia` + `requestAnimationFrame`.
 - `modelComplexity` is `1` → requires `pose_landmark_full.tflite`.
 - 3D Character `CAL`: `{ sx: 1, sy: -1, sz: -0.4, swapLR: false }`.
 - Dev hooks: `window.__avatar`, `window.__modelGallery`, `window.__loadVideoURL`,
@@ -58,25 +62,16 @@ User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 
 - `npm run build` passes.
 - `npm audit --audit-level=low` reports 0 vulnerabilities.
-- App loads without a browser alert.
+- `npm run start` → http://127.0.0.1:5180/ loads and tracks.
 - Body model gallery shows Mushy + Xbot; Meshy slots show **Awaiting file** until GLB added.
-- **Refresh Models** rescans after dropping a file in `public/models/body/`.
 - Live Keypoints panel + JSON export still work.
-- Check ~390 px viewport after UI changes.
 
 ## Deployment
 
-**Provider:** GitHub Pages  
-**Repository:** [amitphillaura/3d-avatar](https://github.com/amitphillaura/3d-avatar)  
-**URL:** https://amitphillaura.github.io/3d-avatar/  
-**Secrets:** none  
-**Deploy:** push to `main` → `.github/workflows/deploy.yml` (`BASE_PATH=/3d-avatar/`)
-
-```bash
-npm run build
-npm run preview -- --host 127.0.0.1 --port 5180
-gh workflow run deploy.yml   # manual re-deploy
-```
+**Provider:** none (local machine only)  
+**Production URL:** http://127.0.0.1:5180/  
+**Command:** `npm run start` (or `npm run build && npm run preview`)  
+**Git remote:** https://github.com/amitphillaura/3d-avatar — code only; `.github/workflows/ci.yml` runs build + audit on push, no deploy.
 
 ## Constraints
 

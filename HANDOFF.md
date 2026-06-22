@@ -5,8 +5,8 @@ For the next agent/engineer picking this up. Read this first, then `TODO.md`.
 ## Where it lives
 
 - **Project root:** `/Users/amit/Projects/3d Avatar`
-- **Git:** https://github.com/amitphillaura/3d-avatar — branch `main`
-- **Live URL:** https://amitphillaura.github.io/3d-avatar/
+- **Git:** https://github.com/amitphillaura/3d-avatar — branch `main` (code only, no hosting)
+- **Production:** **this machine** — http://127.0.0.1:5180/ via `npm run start`
 - **Platform:** macOS. Node + Vite project.
 
 ## What it is
@@ -15,105 +15,57 @@ A Vite web app — a local **pose-transfer prototype**. MediaPipe Holistic track
 face from **webcam or video file** and drives **multiple 3D body rigs** in a horizontal
 model gallery below the keypoint inspector.
 
-Goal: characters driven by webcam/video for pose-transfer and future frame/movie work.
-
 ## Run it
 
 ```bash
 cd "/Users/amit/Projects/3d Avatar"
 npm install
-npm run dev -- --port 5173
+npm run dev -- --port 5173     # development → http://127.0.0.1:5173/
+npm run start                  # local production → http://127.0.0.1:5180/
 npm run build
 npm audit --audit-level=low
-npm run preview -- --port 5180
 ```
 
-## Deployment (GitHub Pages)
+## Deployment
 
 | Item | Value |
 |------|--------|
-| Repo | https://github.com/amitphillaura/3d-avatar |
-| URL | https://amitphillaura.github.io/3d-avatar/ |
-| Trigger | Push to `main` |
-| Workflow | `.github/workflows/deploy.yml` |
-| Secrets | None |
+| Hosted deploy | **None** — user wants prod on this Mac only |
+| Local prod URL | http://127.0.0.1:5180/ |
+| Local prod command | `npm run start` |
+| GitHub | Repo + CI only (`.github/workflows/ci.yml` — build + audit, no Pages) |
 
-## UI layout (current)
+Do **not** re-enable GitHub Pages unless the user asks.
 
-1. **Top** — controls (source, tracking mode, visual style, export, **Refresh Models**).
-2. **Stage** — full-width annotated camera/video canvas.
-3. **Live Keypoints & Models**
-   - **Body row** — skeleton preview + keypoint table + **horizontal model gallery**
-     (Mushy, Xbot, Meshy slots from registry).
-   - **Face row** — skeleton + table + face model slots (static GLB preview for now).
+## UI layout
 
-Click a model card to set the dev-hook primary (`window.__avatar`). All **loaded** body
-GLBs receive the same live pose.
+1. **Top** — controls + full-width media canvas.
+2. **Live Keypoints & Models** — body/face skeletons, tables, horizontal model gallery.
 
 ## Model library
 
 ```
 public/models/
-  registry.json       # catalog — edit to add/rename slots
-  character.glb       # bundled Xbot (committed)
-  body/               # user Meshy exports (gitignored *.glb)
-    README.md
-    meshy-01.glb      # example — you add this locally
-  face/               # future face GLBs (gitignored *.glb)
-    README.md
+  registry.json
+  character.glb       # bundled Xbot
+  body/               # Meshy exports (gitignored *.glb)
+  face/               # face GLBs (gitignored)
 ```
 
-**Meshy export:** rig → add animations → download GLB (all clips, single file) → save to
-`body/` matching `registry.json` → **Refresh Models** in the app.
-
-**Code:** `src/modelRegistry.js` (fetch + HEAD probe), `src/modelGallery.js` (cards UI),
-`src/glbAvatar.js` (`CharacterAvatar` — load URL, animation dropdown, Mixamo retargeting).
+See `AGENTS.md` for Meshy drop workflow.
 
 ## Key files
 
-- `src/app.js` — pipeline, `ModelGallery` init, dev hooks.
-- `src/avatar.js` — Mushy procedural rig.
-- `src/glbAvatar.js` — GLB retargeting; `CAL` baked for screen-left alignment.
-- `src/modelGallery.js` / `src/modelRegistry.js` — model catalog UI.
-- `public/mediapipe/` — vendored Holistic runtime.
-- `public/models/character.glb` — Xbot; bones like `mixamorigLeftArm` (no colon).
-
-## Feature state
-
-- ✅ Camera + video file sources; permission denial handled in-app.
-- ✅ Local MediaPipe (no CDN).
-- ✅ Full-width media stage; models moved into keypoints inspector.
-- ✅ Body model gallery: Mushy + registry GLBs side by side.
-- ✅ Per-model animation clip dropdown (from embedded GLB clips).
-- ✅ Orientation calibration done (`sx: 1`, `swapLR: false`).
-- ✅ GitHub Pages deploy on push to `main`.
-- ⏳ Face row: static GLB preview only (no face retarget yet).
-- ⏳ Unified media toggle / photo input (see `TODO.md`).
+- `src/app.js`, `src/modelGallery.js`, `src/glbAvatar.js`, `src/avatar.js`
+- `public/mediapipe/`, `public/models/registry.json`
 
 ## Dev hooks
 
-```js
-window.__avatar          // primary selected rig (click a card)
-window.__modelGallery    // gallery controller
-window.__loadVideoURL('/sample.mp4')
-window.__playVideo()
-window.__processFrame()
-window.__video
-window.__avatar.cal = { sx, sy, sz, swapLR }  // fine-tune GLB mapping
-```
-
-## Verifying changes
-
-Use a real browser. After UI work, check desktop + ~390 px wide.
-
-```bash
-npm run build && npm audit --audit-level=low
-```
-
-On GitHub: Actions tab → **Deploy to GitHub Pages** should pass after push.
+`window.__avatar`, `window.__modelGallery`, `window.__loadVideoURL`, `window.__playVideo`,
+`window.__processFrame`, `window.__video`
 
 ## Conventions
 
 - Keep keypoint panel + JSON export.
-- Do not commit user GLBs in `body/` or `face/` (gitignored).
+- Do not commit user GLBs in `body/` or `face/`.
 - Keep build green and audit clean.

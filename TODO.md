@@ -4,7 +4,7 @@
 
 - 3D Character orientation calibration (`CAL`: `sx: 1, sy: -1, sz: -0.4, swapLR: false`)
 - Body model gallery + `public/models/registry.json` + gitignored `body/` / `face/` drop folders
-- GitHub Pages deployment
+- Local-only production (`npm run start` on :5180); GitHub is code + CI only
 
 ## Open (next UX / media)
 
