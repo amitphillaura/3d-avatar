@@ -32,9 +32,9 @@ const BONE_MAP = [
   { bone: "mixamorigRightLeg", child: "mixamorigRightFoot", from: "rightKnee", to: "rightAnkle" }
 ];
 
-// Orientation calibration. sx/sy/sz are axis sign+scale for mapLandmark;
-// swapLR drives each bone from the opposite-side landmarks (for a true mirror).
-const CAL = { sx: -1, sy: -1, sz: -0.4, swapLR: false };
+// Match MediaPipe image coords to the viewport: image-left -> screen-left.
+// Same convention as the camera canvas and Live Keypoints skeleton preview.
+const CAL = { sx: 1, sy: -1, sz: -0.4, swapLR: false };
 
 const OPPOSITE = (name) =>
   name.startsWith("left") ? name.replace("left", "right") : name.replace("right", "left");
@@ -56,20 +56,27 @@ export class CharacterAvatar {
     this.ready = false;
     this.cal = { ...CAL };
 
-    // Smoothed, mapped world positions for each landmark we track.
+    // Raw mapped targets from the latest MediaPipe pose; smoothed each animation frame.
+    this.targets = new Map();
     this.smooth = new Map();
     this.filters = new Map();
     Object.keys(LM).forEach((name) => {
+      this.targets.set(name, new THREE.Vector3());
       this.smooth.set(name, new THREE.Vector3());
       this.filters.set(name, {
-        x: new OneEuro(),
-        y: new OneEuro(),
-        z: new OneEuro({ minCutoff: 0.7, beta: 0.006 })
+        x: new OneEuro({ minCutoff: 2.4, beta: 0.028 }),
+        y: new OneEuro({ minCutoff: 2.4, beta: 0.028 }),
+        z: new OneEuro({ minCutoff: 1.6, beta: 0.012 })
       });
     });
     this.haveSmooth = false;
 
     // Reusable temporaries to avoid per-frame allocation.
+    this._mapped = new THREE.Vector3();
+    this._hipMid = new THREE.Vector3();
+    this._shMid = new THREE.Vector3();
+    this._up = new THREE.Vector3();
+    this._headDir = new THREE.Vector3();
     this._restDir = new THREE.Vector3();
     this._targetDir = new THREE.Vector3();
     this._delta = new THREE.Quaternion();
@@ -83,8 +90,12 @@ export class CharacterAvatar {
     this.camera.position.set(0, 1.4, 4.2);
     this.camera.lookAt(0, 1.1, 0);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: "high-performance"
+    });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.mount.appendChild(this.renderer.domElement);
 
@@ -169,9 +180,9 @@ export class CharacterAvatar {
   }
 
   // MediaPipe normalized coords -> avatar world space, via CAL signs.
-  mapLandmark(lm) {
+  mapLandmark(lm, out = this._mapped) {
     const c = this.cal;
-    return new THREE.Vector3(
+    return out.set(
       c.sx * (lm.x - 0.5) * 2.0,
       c.sy * (lm.y - 0.5) * 2.0,
       c.sz * (lm.z || 0)
@@ -181,28 +192,44 @@ export class CharacterAvatar {
   updatePose(poseLandmarks) {
     if (!poseLandmarks) return;
     let visible = 0;
-    const dt = 1 / 30;
     this.visibleNow = this.visibleNow || new Set();
     this.visibleNow.clear();
     Object.entries(LM).forEach(([name, index]) => {
       const lm = poseLandmarks[index];
       if (!landmarkVisible(lm)) return;
-      const mapped = this.mapLandmark(lm);
-      const f = this.filters.get(name);
-      const target = this.smooth.get(name);
-      if (this.haveSmooth) {
-        target.set(f.x.filter(mapped.x, dt), f.y.filter(mapped.y, dt), f.z.filter(mapped.z, dt));
-      } else {
-        target.copy(mapped);
-      }
+      this.targets.get(name).copy(this.mapLandmark(lm));
       this.visibleNow.add(name);
       visible += 1;
     });
     if (visible >= 6) {
+      if (!this.haveSmooth) {
+        this.visibleNow.forEach((name) => {
+          this.smooth.get(name).copy(this.targets.get(name));
+        });
+      }
       this.haveSmooth = true;
       this.latestTrackedAt = performance.now();
       this.metaElement.textContent = `Character tracking ${visible} body points`;
     }
+  }
+
+  smoothPose(delta) {
+    const seen = this.visibleNow || new Set();
+    seen.forEach((name) => {
+      const target = this.targets.get(name);
+      const smooth = this.smooth.get(name);
+      const f = this.filters.get(name);
+      if (!this.haveSmooth) {
+        smooth.copy(target);
+        return;
+      }
+      smooth.set(
+        f.x.filter(target.x, delta),
+        f.y.filter(target.y, delta),
+        f.z.filter(target.z, delta)
+      );
+    });
+    if (seen.size >= 6) this.haveSmooth = true;
   }
 
   retarget() {
@@ -218,7 +245,6 @@ export class CharacterAvatar {
       // otherwise ease it back to rest so off-screen limbs don't flail.
       if (!seen.has(f) || !seen.has(t)) {
         bone.quaternion.slerp(restLocalQuat, 0.2);
-        bone.updateWorldMatrix(false, false);
         return;
       }
 
@@ -236,26 +262,27 @@ export class CharacterAvatar {
       bone.parent.getWorldQuaternion(this._parentQuat);
       this._parentQuat.invert();
       bone.quaternion.multiplyQuaternions(this._parentQuat, this._desired);
-      bone.updateWorldMatrix(false, false);
     });
+
+    if (this.model) this.model.updateMatrixWorld(true);
 
     // Torso lean: spine follows the hips -> shoulders line.
     if (this.spine && this.spineRest) {
-      const hipMid = get("leftHip").clone().add(get("rightHip")).multiplyScalar(0.5);
-      const shMid = get("leftShoulder").clone().add(get("rightShoulder")).multiplyScalar(0.5);
-      const up = shMid.sub(hipMid).normalize();
-      const lean = Math.atan2(up.x, up.y); // side-to-side lean
+      this._hipMid.addVectors(get("leftHip"), get("rightHip")).multiplyScalar(0.5);
+      this._shMid.addVectors(get("leftShoulder"), get("rightShoulder")).multiplyScalar(0.5);
+      this._up.subVectors(this._shMid, this._hipMid).normalize();
+      const lean = Math.atan2(this._up.x, this._up.y);
       this.spine.quaternion.copy(this.spineRest);
       this.spine.rotateZ(THREE.MathUtils.clamp(-lean, -0.5, 0.5));
     }
 
     // Head: nod/turn from the nose relative to the shoulders.
     if (this.neck && this.neckRest) {
-      const shMid = get("leftShoulder").clone().add(get("rightShoulder")).multiplyScalar(0.5);
-      const dir = get("nose").clone().sub(shMid);
+      this._shMid.addVectors(get("leftShoulder"), get("rightShoulder")).multiplyScalar(0.5);
+      this._headDir.subVectors(get("nose"), this._shMid);
       this.neck.quaternion.copy(this.neckRest);
-      this.neck.rotateY(THREE.MathUtils.clamp(dir.x * 1.2, -0.6, 0.6));
-      this.neck.rotateX(THREE.MathUtils.clamp(-(dir.y - 0.25) * 1.0, -0.5, 0.5));
+      this.neck.rotateY(THREE.MathUtils.clamp(this._headDir.x * 1.2, -0.6, 0.6));
+      this.neck.rotateX(THREE.MathUtils.clamp(-(this._headDir.y - 0.25) * 1.0, -0.5, 0.5));
     }
   }
 
@@ -268,9 +295,11 @@ export class CharacterAvatar {
     const tracking = this.ready && now - this.latestTrackedAt <= 900;
 
     if (tracking) {
-      // Manual retargeting wins; pause idle so it doesn't fight the pose.
+      if (this.idleAction?.isRunning()) this.idleAction.stop();
+      this.smoothPose(delta);
       this.retarget();
     } else if (this.mixer) {
+      if (this.idleAction && !this.idleAction.isRunning()) this.idleAction.play();
       this.mixer.update(delta);
       if (this.ready && performance.now() - this.startedAt > 1500 && this.haveSmooth) {
         this.metaElement.textContent = "Character idle - waiting for your pose";

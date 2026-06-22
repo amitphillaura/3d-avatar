@@ -60,13 +60,9 @@ deploy will need a target such as GitHub Pages, Vercel, Netlify, Cloudflare Page
   below the camera + rig screens. Clean Skeleton is the default visual style.
 
 ## The one open task (see TODO.md)
-The 3D Character **orientation mapping is not finalized** — limbs appear mirrored/crossed.
-Engine is fine; only the `CAL` sign/swap constants in `src/glbAvatar.js` need to be pinned
-down empirically. A live tuning harness exists:
-- `window.__avatar.cal = { sx, sy, sz, swapLR }` — tune without rebuilding.
-- `window.__loadVideoURL('/sample.mp4')`, `window.__playVideo()`,
-  `window.__processFrame()`, `window.__video` — drive the deterministic test clip.
-Open question for the user: **mirror** (webcam-natural) vs **direct copy** (matches source).
+~~3D Character orientation mapping~~ — **done**. Baked `CAL` is
+`{ sx: 1, sy: -1, sz: -0.4, swapLR: false }` so image-left matches screen-left
+(aligned with the skeleton preview). Dev hook: `window.__avatar.cal = { sx, sy, sz, swapLR }`.
 
 ## Verifying changes (important)
 Drive a real browser at http://127.0.0.1:5173/ with the webcam or a video file. If camera

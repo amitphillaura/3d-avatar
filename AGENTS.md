@@ -39,6 +39,8 @@ UI and avatar paths.
   `navigator.mediaDevices.getUserMedia` plus a `requestAnimationFrame` processing loop.
 - `modelComplexity` is currently `1`, so `public/mediapipe/holistic/pose_landmark_full.tflite`
   is the required pose model file.
+- 3D Character `CAL` is `{ sx: 1, sy: -1, sz: -0.4, swapLR: false }` — image-left maps to
+  screen-left, matching the skeleton preview.
 - The app exposes dev hooks on `window.__avatar`, `window.__loadVideoURL`,
   `window.__playVideo`, `window.__processFrame`, and `window.__video` for calibration.
 
