@@ -56,16 +56,18 @@ UI and avatar paths.
 
 ## Deployment
 
-There is no remote or hosted deployment provider configured in this repository. The
-current production deployment check is:
+**Provider:** GitHub Pages  
+**Repository:** [amitphillaura/3d-avatar](https://github.com/amitphillaura/3d-avatar)  
+**URL:** https://amitphillaura.github.io/3d-avatar/  
+**Secrets:** none (public static site)  
+**Deploy:** push to `main` — `.github/workflows/deploy.yml` builds with `BASE_PATH=/3d-avatar/` and publishes `dist/`
 
 ```bash
 npm run build
-npm run preview -- --host 127.0.0.1 --port 5180
+npm run preview -- --host 127.0.0.1 --port 5180   # local production check
 ```
 
-If a future agent adds hosted deployment, document the provider, project name, URL,
-required secrets, and deploy command here and in `HANDOFF.md`.
+Manual workflow trigger: `gh workflow run deploy.yml`
 
 ## Constraints
 

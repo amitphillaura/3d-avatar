@@ -4,7 +4,7 @@ For the next agent/engineer picking this up. Read this first, then `TODO.md`.
 
 ## Where it lives
 - **Project root:** `/Users/amit/Projects/3d Avatar`
-- **Git:** local repo, branch `main`, no remote configured yet.
+- **Git:** https://github.com/amitphillaura/3d-avatar — branch `main`, auto-deploys to GitHub Pages.
 - **Platform:** macOS. Node + Vite project.
 
 ## What it is
@@ -24,11 +24,16 @@ npm run dev -- --port 5173
 # open http://127.0.0.1:5173/   (webcam needs localhost or HTTPS)
 npm run build        # production build (must stay green)
 npm audit --audit-level=low   # currently 0 vulnerabilities
-npm run preview -- --port 5180 # local production preview/deployment check
+npm run preview -- --port 5180 # local production preview
 ```
 
-There is currently **no git remote and no hosted deployment provider configured**. A hosted
-deploy will need a target such as GitHub Pages, Vercel, Netlify, Cloudflare Pages, etc.
+## Deployment (GitHub Pages)
+
+- **Repo:** https://github.com/amitphillaura/3d-avatar
+- **Live URL:** https://amitphillaura.github.io/3d-avatar/
+- **How:** every push to `main` runs `.github/workflows/deploy.yml` (build + Pages deploy)
+- **Secrets:** none
+- **Local check:** `npm run build && npm run preview -- --port 5180`
 
 ## Key files
 - `AGENTS.md` — quick-start instructions for Cursor/Codex/Claude-style agents.

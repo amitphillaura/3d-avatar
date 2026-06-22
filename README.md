@@ -18,9 +18,9 @@ npm run build
 npm run preview -- --port 5180
 ```
 
-`npm run build` writes the production bundle to `dist/`. There is no hosted deployment
-target configured in this repo yet; `npm run preview` is the current local production
-deployment path.
+`npm run build` writes the production bundle to `dist/`. Production is hosted on
+[GitHub Pages](https://amitphillaura.github.io/3d-avatar/) (auto-deploy from `main`).
+Local preview: `npm run preview -- --port 5180`.
 
 ## Agent Handoff
 
