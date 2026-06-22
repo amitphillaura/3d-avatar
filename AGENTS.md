@@ -7,7 +7,7 @@ procedural Mushy rig or a GLB character rig.
 ## First Steps
 
 ```bash
-cd "/Users/amit/Documents/3d Avatar"
+cd "/Users/amit/Projects/3d Avatar"
 npm install
 npm run dev -- --port 5173
 npm run build

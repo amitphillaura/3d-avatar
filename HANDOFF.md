@@ -3,7 +3,7 @@
 For the next agent/engineer picking this up. Read this first, then `TODO.md`.
 
 ## Where it lives
-- **Project root:** `/Users/amit/Documents/3d Avatar`
+- **Project root:** `/Users/amit/Projects/3d Avatar`
 - **Git:** local repo, branch `main`, no remote configured yet.
 - **Platform:** macOS. Node + Vite project.
 
@@ -18,7 +18,7 @@ retargeting front end.
 
 ## Run it
 ```bash
-cd "/Users/amit/Documents/3d Avatar"
+cd "/Users/amit/Projects/3d Avatar"
 npm install          # if node_modules missing
 npm run dev -- --port 5173
 # open http://127.0.0.1:5173/   (webcam needs localhost or HTTPS)
