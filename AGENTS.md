@@ -1,7 +1,7 @@
 # Agent Guide
 
 This project is a Vite + Three.js local pose-transfer prototype. It tracks MediaPipe
-Holistic face/body landmarks from webcam or uploaded video and drives procedural and
+Holistic face/body landmarks from webcam, uploaded video, or uploaded still images and drives procedural and
 GLB body rigs from a shared model gallery.
 
 **Production runs on this machine only** — not hosted. GitHub stores the repo code; CI
@@ -24,7 +24,8 @@ npm audit --audit-level=low
 | Dev | http://127.0.0.1:5173/ |
 | **Local prod** | http://127.0.0.1:5180/ |
 
-Webcam needs localhost or HTTPS. If camera is denied, use Video File mode.
+Webcam needs localhost or HTTPS and is opt-in via **Start Camera**. If camera is denied,
+use the media file picker with a video or image.
 
 ## Important Files
 
@@ -53,7 +54,8 @@ User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 ## Current Runtime Notes
 
 - MediaPipe is local under `public/mediapipe` (no CDN).
-- Camera uses native `getUserMedia` + `requestAnimationFrame`.
+- Camera uses native `getUserMedia` + `requestAnimationFrame`, but does not auto-start.
+- Media file mode supports `video/*` playback and one-frame `image/*` still processing.
 - `modelComplexity` is `1` → requires `pose_landmark_full.tflite`.
 - 3D Character `CAL`: `{ sx: 1, sy: -1, sz: -0.4, swapLR: false }`.
 - Dev hooks: `window.__avatar`, `window.__modelGallery`, `window.__loadVideoURL`,

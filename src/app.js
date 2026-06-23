@@ -4,6 +4,10 @@ import { ModelGallery } from "./modelGallery.js";
 
 const videoElement = document.createElement("video");
 videoElement.setAttribute("playsinline", "");
+videoElement.preload = "metadata";
+
+const imageElement = new Image();
+imageElement.decoding = "async";
 
 const canvasElement = document.getElementById("output");
 const canvasCtx = canvasElement.getContext("2d", { alpha: true });
@@ -36,10 +40,14 @@ let frameTick = 0;
 let holistic = null;
 let modelGallery = null;
 let videoObjectUrl = null;
+let imageObjectUrl = null;
 let videoLoopId = null;
 let cameraLoopId = null;
+let autoCameraTimer = null;
 let isProcessingFrame = false;
 let videoLoaded = false;
+let imageLoaded = false;
+let currentImageName = "";
 
 const BODY_GLOW_PATHS = [
   [15, 13, 11, 12, 14, 16],
@@ -97,7 +105,9 @@ function setDetectionState(message) {
 }
 
 function getSourceLabel() {
-  return sourceSelect.value === "video" ? "video file" : "webcam feed";
+  if (sourceSelect.value === "video") return "video file";
+  if (sourceSelect.value === "image") return "image file";
+  return "webcam feed";
 }
 
 function toCanvasPoint(landmark) {
@@ -113,13 +123,13 @@ function addGlowTrail(points, type = "body") {
   glowTrails.push({
     points,
     age: 0,
-    life: type === "face" ? 22 : 34,
+    life: type === "face" ? 16 : 26,
     hue: (frameTick * 9 + Math.random() * 70) % 360,
-    width: type === "face" ? 3 : 6
+    width: type === "face" ? 1.8 : 3.6
   });
 
-  if (glowTrails.length > 90) {
-    glowTrails.splice(0, glowTrails.length - 90);
+  if (glowTrails.length > 64) {
+    glowTrails.splice(0, glowTrails.length - 64);
   }
 }
 
@@ -163,19 +173,19 @@ function drawNeonPolyline(points, hue, alpha, width) {
   canvasCtx.globalCompositeOperation = "lighter";
 
   canvasCtx.shadowColor = `hsla(${hue}, 100%, 65%, ${alpha})`;
-  canvasCtx.shadowBlur = 26;
-  canvasCtx.strokeStyle = `hsla(${hue}, 100%, 62%, ${alpha * 0.45})`;
-  canvasCtx.lineWidth = width * 4;
+  canvasCtx.shadowBlur = 16;
+  canvasCtx.strokeStyle = `hsla(${hue}, 100%, 62%, ${alpha * 0.28})`;
+  canvasCtx.lineWidth = width * 3;
   canvasCtx.stroke();
 
-  canvasCtx.shadowBlur = 14;
-  canvasCtx.strokeStyle = `hsla(${(hue + 42) % 360}, 100%, 68%, ${alpha * 0.75})`;
-  canvasCtx.lineWidth = width * 2;
+  canvasCtx.shadowBlur = 8;
+  canvasCtx.strokeStyle = `hsla(${(hue + 42) % 360}, 100%, 68%, ${alpha * 0.55})`;
+  canvasCtx.lineWidth = width * 1.35;
   canvasCtx.stroke();
 
   canvasCtx.shadowBlur = 0;
   canvasCtx.strokeStyle = `rgba(255,255,255,${alpha})`;
-  canvasCtx.lineWidth = Math.max(1.2, width * 0.55);
+  canvasCtx.lineWidth = Math.max(1, width * 0.42);
   canvasCtx.stroke();
 
   canvasCtx.globalCompositeOperation = "source-over";
@@ -462,21 +472,44 @@ function drawResults(image) {
   canvasCtx.restore();
 }
 
+function getFrameSource() {
+  if (sourceSelect.value === "image") return imageLoaded ? imageElement : null;
+  if (sourceSelect.value === "camera" && !cameraInstance) return null;
+  return videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA ? videoElement : null;
+}
+
+function getFrameDimensions(source) {
+  if (source === imageElement) {
+    return {
+      width: imageElement.naturalWidth || imageElement.width || 0,
+      height: imageElement.naturalHeight || imageElement.height || 0
+    };
+  }
+
+  return {
+    width: videoElement.videoWidth || 1280,
+    height: videoElement.videoHeight || 720
+  };
+}
+
 async function processCurrentFrame() {
-  if (isProcessingFrame || !holistic || videoElement.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+  const frameSource = getFrameSource();
+  if (isProcessingFrame || !holistic || !frameSource) {
     return;
   }
 
   isProcessingFrame = true;
   frameTick += 1;
   try {
-    await holistic.send({ image: videoElement });
+    await holistic.send({ image: frameSource });
     modelGallery?.updatePose(latestResults?.poseLandmarks);
-    drawResults(videoElement);
+    drawResults(frameSource);
     updateKeypointsPanel();
-    frameMetaEl.textContent = `${videoElement.videoWidth || 1280} x ${videoElement.videoHeight || 720} ${getSourceLabel()}`;
+    const { width, height } = getFrameDimensions(frameSource);
+    frameMetaEl.textContent = `${width} x ${height} ${getSourceLabel()}`;
   } catch (error) {
     console.warn("Frame processing error:", error);
+    setStatus(`Frame processing error: ${error.message || "could not process frame"}`, "danger");
   } finally {
     isProcessingFrame = false;
   }
@@ -513,6 +546,31 @@ function resetDetection() {
   copyButton.disabled = true;
   glowTrails = [];
   setDetectionState("Searching");
+}
+
+function cancelAutoCameraStart() {
+  if (!autoCameraTimer) return;
+  window.clearTimeout(autoCameraTimer);
+  autoCameraTimer = null;
+}
+
+function clearVideoObjectUrl() {
+  if (!videoObjectUrl) return;
+  URL.revokeObjectURL(videoObjectUrl);
+  videoObjectUrl = null;
+}
+
+function clearImageObjectUrl() {
+  if (!imageObjectUrl) return;
+  URL.revokeObjectURL(imageObjectUrl);
+  imageObjectUrl = null;
+}
+
+function clearImageSource() {
+  clearImageObjectUrl();
+  imageElement.removeAttribute("src");
+  imageLoaded = false;
+  currentImageName = "";
 }
 
 function cancelVideoLoop() {
@@ -580,6 +638,7 @@ function scheduleCameraLoop() {
 }
 
 async function startCamera() {
+  cancelAutoCameraStart();
   sourceSelect.value = "camera";
   cancelVideoLoop();
   cancelCameraLoop();
@@ -587,16 +646,15 @@ async function startCamera() {
   setStatus("Requesting camera access...", "warning");
   resetDetection();
 
-  if (videoObjectUrl) {
-    URL.revokeObjectURL(videoObjectUrl);
-    videoObjectUrl = null;
-  }
+  clearVideoObjectUrl();
+  clearImageSource();
   videoElement.removeAttribute("src");
   videoElement.load();
   videoLoaded = false;
   playVideoButton.disabled = true;
   restartVideoButton.disabled = true;
   retryButton.disabled = false;
+  retryButton.textContent = "Requesting...";
 
   try {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -625,6 +683,7 @@ async function startCamera() {
     cameraInstance = { stream };
     setStatus("Camera active. Move back for full body, closer for face detail.");
     frameMetaEl.textContent = "Camera active";
+    retryButton.textContent = "Restart Camera";
     scheduleCameraLoop();
   } catch (error) {
     stopCamera();
@@ -635,6 +694,7 @@ async function startCamera() {
     );
     frameMetaEl.textContent = "Camera unavailable";
     setDetectionState("Blocked");
+    retryButton.textContent = "Retry Camera";
   }
 }
 
@@ -678,17 +738,23 @@ async function restartLoadedVideo() {
   await playLoadedVideo();
 }
 
-function loadVideoFile(file) {
-  if (!file) return;
-
+function prepareMediaMode(kind) {
+  cancelAutoCameraStart();
   stopCamera();
   stopVideoPlayback();
   resetDetection();
-  sourceSelect.value = "video";
+  sourceSelect.value = kind;
+  retryButton.disabled = true;
+  retryButton.textContent = "Start Camera";
+}
 
-  if (videoObjectUrl) {
-    URL.revokeObjectURL(videoObjectUrl);
-  }
+function loadVideoFile(file) {
+  if (!file) return;
+
+  prepareMediaMode("video");
+  clearImageSource();
+
+  clearVideoObjectUrl();
 
   videoObjectUrl = URL.createObjectURL(file);
   videoElement.muted = true;
@@ -705,17 +771,69 @@ function loadVideoFile(file) {
   setStatus(`Loading video: ${file.name}`, "warning");
 }
 
+function loadImageFile(file) {
+  if (!file) return;
+
+  prepareMediaMode("image");
+  clearVideoObjectUrl();
+  videoElement.removeAttribute("src");
+  videoElement.load();
+  videoLoaded = false;
+
+  clearImageObjectUrl();
+  imageObjectUrl = URL.createObjectURL(file);
+  imageLoaded = false;
+  currentImageName = file.name;
+  playVideoButton.disabled = true;
+  restartVideoButton.disabled = true;
+  frameMetaEl.textContent = `Loading ${file.name}...`;
+  setStatus(`Loading image: ${file.name}`, "warning");
+  imageElement.src = imageObjectUrl;
+}
+
+function loadMediaFile(file) {
+  if (!file) return;
+  if (file.type.startsWith("image/")) {
+    loadImageFile(file);
+    return;
+  }
+  if (file.type.startsWith("video/")) {
+    loadVideoFile(file);
+    return;
+  }
+  setStatus("Unsupported file type. Choose an image or video file.", "danger");
+}
+
 function switchSource(nextSource) {
+  cancelAutoCameraStart();
   resetDetection();
 
   if (nextSource === "camera") {
-    startCamera();
+    stopVideoPlayback();
+    retryButton.disabled = false;
+    retryButton.textContent = cameraInstance ? "Restart Camera" : "Start Camera";
+    initCanvasPlaceholder("Click Start Camera to begin");
+    setStatus("Camera mode ready. Click Start Camera when you want to grant camera access.", "warning");
+    frameMetaEl.textContent = "Camera idle";
     return;
   }
 
   stopCamera();
   stopVideoPlayback();
   retryButton.disabled = true;
+  retryButton.textContent = "Start Camera";
+
+  if (nextSource === "image") {
+    if (!imageLoaded) {
+      initCanvasPlaceholder("Load an image file to begin");
+      setStatus("Image mode ready. Choose a photo or image file to track.", "warning");
+      frameMetaEl.textContent = "Waiting for image file...";
+    } else {
+      setStatus(`Image loaded: ${currentImageName || "photo"}.`);
+      processCurrentFrame();
+    }
+    return;
+  }
 
   if (!videoLoaded) {
     initCanvasPlaceholder("Load a video file to begin");
@@ -772,7 +890,7 @@ function bindEvents() {
   sourceSelect.addEventListener("change", () => switchSource(sourceSelect.value));
   videoFileInput.addEventListener("change", () => {
     const [file] = videoFileInput.files || [];
-    loadVideoFile(file);
+    loadMediaFile(file);
   });
 
   videoElement.addEventListener("loadeddata", async () => {
@@ -785,6 +903,23 @@ function bindEvents() {
     setStatus("Video loaded. Press Play Video to start tracking.");
     frameMetaEl.textContent = `${videoElement.videoWidth || 0} x ${videoElement.videoHeight || 0} video file`;
     await processCurrentFrame();
+  });
+
+  videoElement.addEventListener("error", () => {
+    if (sourceSelect.value !== "video") return;
+
+    cancelVideoLoop();
+    videoLoaded = false;
+    playVideoButton.disabled = true;
+    restartVideoButton.disabled = true;
+    playVideoButton.textContent = "Play Video";
+    const error = videoElement.error;
+    setStatus(
+      `Video error: ${error?.message || "could not load or decode this file"}. Try another video format.`,
+      "danger"
+    );
+    frameMetaEl.textContent = "Video unavailable";
+    setDetectionState("Blocked");
   });
 
   videoElement.addEventListener("ended", () => {
@@ -819,8 +954,30 @@ function bindEvents() {
             ? "Video mode ready. Press Play Video to track this file."
             : "Video playing. Mushy is following detected motion."
         );
+      } else if (sourceSelect.value === "image" && imageLoaded) {
+        setStatus(`Image loaded: ${currentImageName || "photo"}.`);
       }
     }, 1200);
+  });
+
+  imageElement.addEventListener("load", async () => {
+    if (sourceSelect.value !== "image") return;
+
+    imageLoaded = true;
+    playVideoButton.disabled = true;
+    restartVideoButton.disabled = true;
+    setStatus(`Image loaded: ${currentImageName || "photo"}. Tracking still landmarks.`);
+    frameMetaEl.textContent = `${imageElement.naturalWidth || 0} x ${imageElement.naturalHeight || 0} image file`;
+    await processCurrentFrame();
+  });
+
+  imageElement.addEventListener("error", () => {
+    if (sourceSelect.value !== "image") return;
+
+    imageLoaded = false;
+    setStatus("Image error: could not load this file. Try another image.", "danger");
+    frameMetaEl.textContent = "Image unavailable";
+    setDetectionState("Blocked");
   });
 }
 
@@ -849,29 +1006,45 @@ async function initModelGallery() {
 
 // Dev hook: load a same-origin video URL through the normal video pipeline.
 function loadVideoURL(url) {
-  stopCamera();
-  stopVideoPlayback();
-  resetDetection();
-  sourceSelect.value = "video";
-  if (videoObjectUrl) {
-    URL.revokeObjectURL(videoObjectUrl);
-    videoObjectUrl = null;
-  }
+  prepareMediaMode("video");
+  clearImageSource();
+  clearVideoObjectUrl();
   videoElement.muted = true;
   videoElement.loop = true;
   videoElement.srcObject = null;
   videoElement.src = url;
   videoElement.load();
   videoLoaded = false;
+  playVideoButton.disabled = true;
+  restartVideoButton.disabled = true;
+  frameMetaEl.textContent = "Loading video URL...";
+  setStatus("Loading video URL...", "warning");
+}
+
+// Dev hook: load a same-origin image URL through the normal image pipeline.
+function loadImageURL(url, name = "image") {
+  prepareMediaMode("image");
+  clearVideoObjectUrl();
+  clearImageObjectUrl();
+  videoElement.removeAttribute("src");
+  videoElement.load();
+  videoLoaded = false;
+  imageLoaded = false;
+  currentImageName = name;
+  imageElement.src = url;
+  frameMetaEl.textContent = "Loading image URL...";
+  setStatus("Loading image URL...", "warning");
 }
 
 function init() {
   bindEvents();
   initCanvasPlaceholder();
   window.__loadVideoURL = loadVideoURL;
+  window.__loadImageURL = loadImageURL;
   window.__playVideo = playLoadedVideo;
   window.__processFrame = processCurrentFrame;
   window.__video = videoElement;
+  window.__image = imageElement;
 
   if (!window.isSecureContext && window.location.hostname !== "localhost") {
     setStatus("Webcam access needs HTTPS or localhost. Start this app with npm run dev.", "danger");
@@ -884,6 +1057,7 @@ function init() {
   }
 
   setStatus("Loading models... first run can take a few seconds.", "warning");
+  retryButton.disabled = true;
   setupModels();
   initModelGallery()
     .catch((error) => {
@@ -891,7 +1065,10 @@ function init() {
       setStatus("Model gallery failed to load. Check public/models/registry.json.", "danger");
     })
     .finally(() => {
-      window.setTimeout(startCamera, 800);
+      retryButton.disabled = false;
+      retryButton.textContent = "Start Camera";
+      frameMetaEl.textContent = "Camera idle";
+      setStatus("Ready. Click Start Camera or load an image/video file to begin.", "success");
     });
 }
 

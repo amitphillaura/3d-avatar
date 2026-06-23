@@ -31,12 +31,13 @@
             <select id="source">
               <option value="camera" selected>Camera</option>
               <option value="video">Video File</option>
+              <option value="image">Photo / Image</option>
             </select>
           </label>
 
           <label class="field file-field">
-            <span>Load Video</span>
-            <input id="videoFile" type="file" accept="video/*" />
+            <span>Load Media</span>
+            <input id="videoFile" type="file" accept="image/*,video/*" />
           </label>
 
           <label class="field">
@@ -61,7 +62,7 @@
             <button id="playVideo" type="button" disabled>Play Video</button>
             <button id="restartVideo" type="button" disabled>Restart Video</button>
             <button id="downloadSnapshot" type="button">Download Snapshot</button>
-            <button id="retryCamera" type="button">Retry Camera</button>
+            <button id="retryCamera" type="button">Start Camera</button>
             <button id="refreshModels" type="button">Refresh Models</button>
           </div>
         </section>

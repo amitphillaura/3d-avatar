@@ -52,6 +52,7 @@ export class CharacterAvatar {
     this.lastFrameAt = this.startedAt;
     this.latestTrackedAt = 0;
     this.stopped = false;
+    this.paused = false;
     this.ready = false;
     this.loading = false;
     this.cal = { ...CAL };
@@ -335,7 +336,10 @@ export class CharacterAvatar {
   }
 
   animate() {
-    if (this.stopped) return;
+    if (this.stopped || this.paused) {
+      this.rafId = null;
+      return;
+    }
     const now = performance.now();
     const delta = Math.min((now - this.lastFrameAt) / 1000, 0.05);
     this.lastFrameAt = now;
@@ -353,6 +357,15 @@ export class CharacterAvatar {
 
     this.renderer.render(this.scene, this.camera);
     this.rafId = requestAnimationFrame(() => this.animate());
+  }
+
+  setPaused(paused) {
+    if (this.stopped || this.paused === paused) return;
+    this.paused = paused;
+    if (!paused) {
+      this.lastFrameAt = performance.now();
+      if (!this.rafId) this.animate();
+    }
   }
 
   resize() {

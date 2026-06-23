@@ -10,7 +10,7 @@ function createBadge(text, tone = "muted") {
 }
 
 function fillAnimationSelect(select, names, active) {
-  select.innerHTML = "";
+  select.replaceChildren();
   if (!names.length) {
     const option = document.createElement("option");
     option.value = "";
@@ -29,6 +29,20 @@ function fillAnimationSelect(select, names, active) {
   select.disabled = false;
 }
 
+function createMissingPlaceholder(file) {
+  const placeholder = document.createElement("div");
+  placeholder.className = "model-placeholder";
+
+  const filename = document.createElement("strong");
+  filename.textContent = file || "—";
+
+  const hint = document.createElement("span");
+  hint.textContent = "Add GLB to public/models/";
+
+  placeholder.append(filename, hint);
+  return placeholder;
+}
+
 export class ModelGallery {
   constructor({ bodyMount, faceMount, onPrimaryChange }) {
     this.bodyMount = bodyMount;
@@ -38,9 +52,23 @@ export class ModelGallery {
     this.faceSlots = [];
     this.mushy = null;
     this.primaryId = "mushy";
+    this.visibilityObserver =
+      "IntersectionObserver" in window
+        ? new IntersectionObserver(
+            (entries) => {
+              entries.forEach((entry) => {
+                const avatar = entry.target.__avatarPreview;
+                avatar?.setPaused?.(!entry.isIntersecting);
+              });
+            },
+            { root: null, rootMargin: "180px", threshold: 0.01 }
+          )
+        : null;
   }
 
   async init() {
+    this.bodySlots = [];
+    this.faceSlots = [];
     const registry = await enrichRegistry(await loadModelRegistry());
     this.renderBody(registry.body || []);
     this.renderFace(registry.face || []);
@@ -48,7 +76,7 @@ export class ModelGallery {
   }
 
   renderBody(entries) {
-    this.bodyMount.innerHTML = "";
+    this.bodyMount.replaceChildren();
 
     const mushyCard = this.createCard({
       id: "mushy",
@@ -62,7 +90,9 @@ export class ModelGallery {
     const mount = mushyCard.querySelector(".model-viewport");
     const meta = mushyCard.querySelector(".model-meta");
     this.mushy = new MushyAvatar(mount, meta);
-    this.bodySlots.push({ id: "mushy", kind: "mushy", card: mushyCard, avatar: this.mushy });
+    const mushySlot = { id: "mushy", kind: "mushy", card: mushyCard, avatar: this.mushy };
+    this.bodySlots.push(mushySlot);
+    this.observeSlot(mushySlot);
 
     entries.forEach((entry) => {
       const card = this.createCard({
@@ -92,7 +122,7 @@ export class ModelGallery {
   }
 
   renderFace(entries) {
-    this.faceMount.innerHTML = "";
+    this.faceMount.replaceChildren();
 
     entries.forEach((entry) => {
       const card = this.createCard({
@@ -139,10 +169,7 @@ export class ModelGallery {
     const viewport = document.createElement("div");
     viewport.className = "model-viewport";
     if (!available) {
-      const placeholder = document.createElement("div");
-      placeholder.className = "model-placeholder";
-      placeholder.innerHTML = `<strong>${file || "—"}</strong><span>Add GLB to public/models/</span>`;
-      viewport.appendChild(placeholder);
+      viewport.appendChild(createMissingPlaceholder(file));
     }
 
     const meta = document.createElement("p");
@@ -178,7 +205,7 @@ export class ModelGallery {
     const mount = slot.card.querySelector(".model-viewport");
     const meta = slot.card.querySelector(".model-meta");
     const animSelect = slot.card.querySelector(".model-anim-select");
-    mount.innerHTML = "";
+    mount.replaceChildren();
 
     slot.avatar = new CharacterAvatar(mount, meta, {
       id: slot.entry.id,
@@ -195,13 +222,14 @@ export class ModelGallery {
       event.stopPropagation();
       slot.avatar?.setAnimation(animSelect.value);
     });
+    this.observeSlot(slot);
   }
 
   mountFaceGlb(slot) {
     const mount = slot.card.querySelector(".model-viewport");
     const meta = slot.card.querySelector(".model-meta");
     const animSelect = slot.card.querySelector(".model-anim-select");
-    mount.innerHTML = "";
+    mount.replaceChildren();
 
     slot.avatar = new CharacterAvatar(mount, meta, {
       id: slot.entry.id,
@@ -220,6 +248,13 @@ export class ModelGallery {
     });
 
     meta.textContent = "Static preview (face retargeting soon)";
+    this.observeSlot(slot);
+  }
+
+  observeSlot(slot) {
+    if (!slot?.card || !slot?.avatar || !this.visibilityObserver) return;
+    slot.card.__avatarPreview = slot.avatar;
+    this.visibilityObserver.observe(slot.card);
   }
 
   setPrimary(id) {
@@ -246,8 +281,11 @@ export class ModelGallery {
   }
 
   dispose() {
+    this.visibilityObserver?.disconnect();
     this.mushy?.dispose?.();
     this.bodySlots.forEach((slot) => slot.avatar?.dispose?.());
     this.faceSlots.forEach((slot) => slot.avatar?.dispose?.());
+    this.bodySlots = [];
+    this.faceSlots = [];
   }
 }

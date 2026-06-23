@@ -1,6 +1,6 @@
 # Live Pose Tester
 
-Local camera/video tester for MediaPipe keypoints and live 3D avatars. **Production runs on
+Local camera/video/photo tester for MediaPipe keypoints and live 3D avatars. **Production runs on
 this machine only** — not on GitHub Pages.
 
 ## Run
@@ -19,6 +19,9 @@ Code: https://github.com/amitphillaura/3d-avatar (no hosted app — CI builds on
 ## Adding models
 
 Drop rigged GLBs in `public/models/body/`, register in `registry.json`, click **Refresh Models**.
+
+Camera access is opt-in: click **Start Camera** after the page loads, or use **Load Media**
+with an image/video file.
 
 ## Docs
 

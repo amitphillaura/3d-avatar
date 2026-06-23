@@ -110,6 +110,7 @@ export class MushyAvatar {
     this.bones = [];
     this.activePoints = new Set();
     this.latestTrackedAt = 0;
+    this.paused = false;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x06080e);
@@ -385,7 +386,10 @@ export class MushyAvatar {
   }
 
   animate() {
-    if (this.stopped) return;
+    if (this.stopped || this.paused) {
+      this.rafId = null;
+      return;
+    }
     const now = performance.now();
     const delta = Math.min((now - this.lastFrameAt) / 1000, 0.05);
     this.lastFrameAt = now;
@@ -393,6 +397,15 @@ export class MushyAvatar {
     this.updateRig(delta);
     this.renderer.render(this.scene, this.camera);
     this.rafId = requestAnimationFrame(() => this.animate());
+  }
+
+  setPaused(paused) {
+    if (this.stopped || this.paused === paused) return;
+    this.paused = paused;
+    if (!paused) {
+      this.lastFrameAt = performance.now();
+      if (!this.rafId) this.animate();
+    }
   }
 
   dispose() {

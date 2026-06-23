@@ -12,7 +12,7 @@ For the next agent/engineer picking this up. Read this first, then `TODO.md`.
 ## What it is
 
 A Vite web app — a local **pose-transfer prototype**. MediaPipe Holistic tracks body +
-face from **webcam or video file** and drives **multiple 3D body rigs** in a horizontal
+face from **opt-in webcam, video file, or still image** and drives **multiple 3D body rigs** in a horizontal
 model gallery below the keypoint inspector.
 
 ## Run it
@@ -40,7 +40,7 @@ Do **not** re-enable GitHub Pages unless the user asks.
 
 ## UI layout
 
-1. **Top** — controls + full-width media canvas.
+1. **Top** — controls + full-width media canvas. Camera is opt-in; media picker accepts images and videos.
 2. **Live Keypoints & Models** — body/face skeletons, tables, horizontal model gallery.
 
 ## Model library
