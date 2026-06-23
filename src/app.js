@@ -32,7 +32,13 @@ const overlaySkeletonToggle = document.getElementById("overlaySkeleton");
 const trackFingersToggle = document.getElementById("trackFingers");
 const swapHandsToggle = document.getElementById("swapHands");
 const loopVideoToggle = document.getElementById("loopVideo");
+const videoSoundToggle = document.getElementById("videoSound");
 const SWAP_HANDS_STORAGE_KEY = "live-pose-swap-hands";
+
+function applyVideoSound() {
+  // Sound on = unmuted. Muted while scrubbing/seeking is fine; play() is user-gesture-driven.
+  videoElement.muted = !(videoSoundToggle?.checked ?? false);
+}
 const bodyTableEl = document.getElementById("bodyTable");
 const faceTableEl = document.getElementById("faceTable");
 const leftHandTableEl = document.getElementById("leftHandTable");
@@ -1533,6 +1539,7 @@ async function playLoadedVideo() {
   if (videoElement.ended) {
     videoElement.currentTime = 0;
   }
+  applyVideoSound();
 
   try {
     await videoElement.play();
@@ -1580,7 +1587,7 @@ function loadVideoFile(file) {
   clearVideoObjectUrl();
 
   videoObjectUrl = URL.createObjectURL(file);
-  videoElement.muted = true;
+  applyVideoSound();
   videoElement.loop = Boolean(loopVideoToggle?.checked);
   applyPlaybackSpeed();
   videoElement.srcObject = null;
@@ -1793,6 +1800,11 @@ function bindEvents() {
     setStatus(`Video loop: ${loopVideoToggle.checked ? "on" : "off"}.`);
   });
 
+  videoSoundToggle?.addEventListener("change", () => {
+    applyVideoSound();
+    setStatus(`Video sound: ${videoSoundToggle.checked ? "on" : "off"}.`);
+  });
+
   playbackSpeedInput?.addEventListener("input", () => {
     applyPlaybackSpeed(Number(playbackSpeedInput.value));
     updateVideoFrameMeta();
@@ -1954,7 +1966,7 @@ function loadVideoURL(url) {
   prepareMediaMode("video");
   clearImageSource();
   clearVideoObjectUrl();
-  videoElement.muted = true;
+  applyVideoSound();
   videoElement.loop = Boolean(loopVideoToggle?.checked);
   applyPlaybackSpeed();
   videoElement.srcObject = null;
@@ -1985,11 +1997,12 @@ function loadImageURL(url, name = "image") {
 function init() {
   if (swapHandsToggle) {
     try {
-      // Default ON: MediaPipe Holistic labels L/R hands swapped for typical front-facing
-      // recorded video. Persisted; set to "0" to turn off.
-      swapHandsToggle.checked = localStorage.getItem(SWAP_HANDS_STORAGE_KEY) !== "0";
+      // Default OFF: swapping the source data fixed the panel labels but mis-oriented the
+      // rigged-model wrists (hands crossing into the body). Handedness is being reworked
+      // via a proper solver; leave this as an opt-in display correction for now.
+      swapHandsToggle.checked = localStorage.getItem(SWAP_HANDS_STORAGE_KEY) === "1";
     } catch {
-      swapHandsToggle.checked = true;
+      swapHandsToggle.checked = false;
     }
   }
   bindEvents();
