@@ -143,6 +143,8 @@ export class MushyAvatar {
     this._headLookMatrix = new THREE.Matrix4();
     this.paused = false;
     this._mapScratch = new THREE.Vector3();
+    this._handAssignA = new THREE.Vector3();
+    this._handAssignB = new THREE.Vector3();
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x06080e);
@@ -406,6 +408,28 @@ export class MushyAvatar {
   }
 
   updateHands(leftHandLandmarks, rightHandLandmarks) {
+    // MediaPipe (and the "Swap Hands (L/R)" toggle) can mislabel which set is the left vs
+    // right hand. Anchoring an arm to a mislabeled hand drags the whole forearm across the
+    // body — the crossed-arms bug. Re-assign each hand set to the pose wrist it is
+    // physically closest to so the rig is correct regardless of the label. Pose and hand
+    // landmarks share the same x/y mapping, so image-plane distance is comparable.
+    if (
+      this.activePoints.has("leftWrist") &&
+      this.activePoints.has("rightWrist") &&
+      leftHandLandmarks?.[0] &&
+      rightHandLandmarks?.[0]
+    ) {
+      const lw = this.targetPoints.get("leftWrist");
+      const rw = this.targetPoints.get("rightWrist");
+      const L = this.mapHandLandmark(leftHandLandmarks[0], this._handAssignA);
+      const R = this.mapHandLandmark(rightHandLandmarks[0], this._handAssignB);
+      const xy = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+      if (xy(L, rw) + xy(R, lw) < xy(L, lw) + xy(R, rw)) {
+        const tmp = leftHandLandmarks;
+        leftHandLandmarks = rightHandLandmarks;
+        rightHandLandmarks = tmp;
+      }
+    }
     this.updateHandSide("left", leftHandLandmarks);
     this.updateHandSide("right", rightHandLandmarks);
   }
