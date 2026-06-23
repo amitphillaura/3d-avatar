@@ -513,6 +513,11 @@ export class MushyAvatar {
     const t = (now - this.startedAt) / 1000;
 
     if (!bodyTracking && !faceTracking && !handTracking) {
+      // Paused video / brief dropout (was tracked): HOLD the last pose so the rig
+      // freezes on the frame like the Full Skeleton, instead of dropping to idle.
+      // Only fall back to the idle "waiting" animation on an explicit clear.
+      if (this.latestTrackedAt !== 0) return;
+
       this.activePoints.clear();
       this.metaElement.textContent = "Mushy waiting for your body pose";
       this.bones.forEach(({ mesh }) => {

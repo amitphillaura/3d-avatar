@@ -30,7 +30,9 @@ const modeSelect = document.getElementById("mode");
 const visualStyleSelect = document.getElementById("visualStyle");
 const overlaySkeletonToggle = document.getElementById("overlaySkeleton");
 const trackFingersToggle = document.getElementById("trackFingers");
+const swapHandsToggle = document.getElementById("swapHands");
 const loopVideoToggle = document.getElementById("loopVideo");
+const SWAP_HANDS_STORAGE_KEY = "live-pose-swap-hands";
 const bodyTableEl = document.getElementById("bodyTable");
 const faceTableEl = document.getElementById("faceTable");
 const leftHandTableEl = document.getElementById("leftHandTable");
@@ -1269,6 +1271,16 @@ function getFrameDimensions(source) {
   };
 }
 
+// MediaPipe Holistic often labels left/right hands swapped for front-facing recorded
+// video. Correcting it once here fixes the Left/Right panels AND the rigged model wrists
+// together (the rig anchors each hand to its pose wrist).
+function applyHandSwap() {
+  if (!swapHandsToggle?.checked || !latestResults) return;
+  const tmp = latestResults.leftHandLandmarks;
+  latestResults.leftHandLandmarks = latestResults.rightHandLandmarks;
+  latestResults.rightHandLandmarks = tmp;
+}
+
 async function processCurrentFrame() {
   const frameSource = getFrameSource();
   if (isProcessingFrame || !holistic || !frameSource) {
@@ -1279,6 +1291,7 @@ async function processCurrentFrame() {
   frameTick += 1;
   try {
     await holistic.send({ image: frameSource });
+    applyHandSwap();
     const { width, height } = getFrameDimensions(frameSource);
     if (width > 0 && height > 0) lastSourceAspect = width / height;
     modelGallery?.updateTracking(latestResults, {
@@ -1765,6 +1778,16 @@ function bindEvents() {
     setStatus(`Rigged finger tracking: ${trackFingersToggle.checked ? "on" : "off"}.`);
   });
 
+  swapHandsToggle?.addEventListener("change", () => {
+    try {
+      localStorage.setItem(SWAP_HANDS_STORAGE_KEY, swapHandsToggle.checked ? "1" : "0");
+    } catch {
+      // ignore storage failures
+    }
+    setStatus(`Hands L/R: ${swapHandsToggle.checked ? "swapped" : "normal"}.`);
+    processCurrentFrame();
+  });
+
   loopVideoToggle?.addEventListener("change", () => {
     videoElement.loop = loopVideoToggle.checked;
     setStatus(`Video loop: ${loopVideoToggle.checked ? "on" : "off"}.`);
@@ -1960,6 +1983,15 @@ function loadImageURL(url, name = "image") {
 }
 
 function init() {
+  if (swapHandsToggle) {
+    try {
+      // Default ON: MediaPipe Holistic labels L/R hands swapped for typical front-facing
+      // recorded video. Persisted; set to "0" to turn off.
+      swapHandsToggle.checked = localStorage.getItem(SWAP_HANDS_STORAGE_KEY) !== "0";
+    } catch {
+      swapHandsToggle.checked = true;
+    }
+  }
   bindEvents();
   setupLandmarkPopups();
   applyPlaybackSpeed();
