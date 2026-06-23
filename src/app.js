@@ -2039,9 +2039,16 @@ function init() {
   window.__image = imageElement;
   window.__switchSource = switchSource;
 
-  if (!window.isSecureContext && window.location.hostname !== "localhost") {
-    setStatus("Webcam access needs HTTPS or localhost. Start this app with npm run dev.", "danger");
-    return;
+  // Non-secure origins (e.g. http over Tailscale/LAN) can't use the webcam, but video and
+  // image file modes work fine — so boot the app and only warn, don't bail out. If the
+  // default source is the (unavailable) camera, switch to Video File so the user can load a clip.
+  if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+    setStatus("Camera needs HTTPS or localhost. Over this address, use Video File / Photo — they work normally.", "warning");
+    if (sourceSelect.value === "camera") {
+      sourceSelect.value = "video";
+      syncSourceUI();
+      refreshRawPanel();
+    }
   }
 
   if (!hasMediaPipeGlobals()) {
