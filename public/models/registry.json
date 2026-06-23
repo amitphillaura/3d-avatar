@@ -3,7 +3,7 @@
   "body": [
     {
       "id": "xbot",
-      "name": "Xbot",
+      "name": "Male Base",
       "file": "character.glb",
       "rig": "mixamo",
       "defaultAnimation": "idle",
@@ -11,7 +11,7 @@
     },
     {
       "id": "meshy-01",
-      "name": "Meshy Character 1",
+      "name": "Female Base",
       "file": "body/meshy-01.glb",
       "rig": "mixamo",
       "defaultAnimation": "idle",
@@ -19,7 +19,7 @@
     },
     {
       "id": "meshy-02",
-      "name": "Meshy Character 2",
+      "name": "Stylized Character",
       "file": "body/meshy-02.glb",
       "rig": "mixamo",
       "defaultAnimation": "idle",

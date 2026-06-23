@@ -44,13 +44,28 @@ function createMissingPlaceholder(file) {
 }
 
 export class ModelGallery {
-  constructor({ bodyMount, faceMount, onPrimaryChange }) {
+  constructor({
+    bodyMount,
+    faceMount,
+    heroMount,
+    riggedModelMeta,
+    driverName,
+    driverMeta,
+    driverAnimSelect,
+    onPrimaryChange
+  }) {
     this.bodyMount = bodyMount;
     this.faceMount = faceMount;
+    this.heroMount = heroMount;
+    this.riggedModelMeta = riggedModelMeta;
+    this.driverName = driverName;
+    this.driverMeta = driverMeta;
+    this.driverAnimSelect = driverAnimSelect;
     this.onPrimaryChange = onPrimaryChange;
     this.bodySlots = [];
     this.faceSlots = [];
     this.mushy = null;
+    this.heroAvatar = null;
     this.primaryId = "mushy";
     this.visibilityObserver =
       "IntersectionObserver" in window
@@ -90,7 +105,15 @@ export class ModelGallery {
     const mount = mushyCard.querySelector(".model-viewport");
     const meta = mushyCard.querySelector(".model-meta");
     this.mushy = new MushyAvatar(mount, meta);
-    const mushySlot = { id: "mushy", kind: "mushy", card: mushyCard, avatar: this.mushy };
+    const mushySlot = {
+      id: "mushy",
+      kind: "mushy",
+      name: "Mushy Rig",
+      notes: "Built-in procedural body rig.",
+      card: mushyCard,
+      avatar: this.mushy,
+      animSelect: mushyCard.querySelector(".model-anim-select")
+    };
     this.bodySlots.push(mushySlot);
     this.observeSlot(mushySlot);
 
@@ -108,9 +131,13 @@ export class ModelGallery {
       const slot = {
         id: entry.id,
         kind: "glb",
+        name: entry.name,
+        notes: entry.notes,
+        file: entry.file,
         card,
         entry,
-        avatar: null
+        avatar: null,
+        animSelect: card.querySelector(".model-anim-select")
       };
 
       if (entry.available) {
@@ -204,7 +231,7 @@ export class ModelGallery {
   mountGlb(slot) {
     const mount = slot.card.querySelector(".model-viewport");
     const meta = slot.card.querySelector(".model-meta");
-    const animSelect = slot.card.querySelector(".model-anim-select");
+    const animSelect = slot.animSelect;
     mount.replaceChildren();
 
     slot.avatar = new CharacterAvatar(mount, meta, {
@@ -214,6 +241,9 @@ export class ModelGallery {
       defaultAnimation: slot.entry.defaultAnimation || "idle",
       onAnimationsLoaded: (names, active) => {
         fillAnimationSelect(animSelect, names, active);
+        if (this.primaryId === slot.id) {
+          this.syncDriverAnimSelect(names, active);
+        }
       }
     });
 
@@ -221,6 +251,10 @@ export class ModelGallery {
     animSelect.addEventListener("change", (event) => {
       event.stopPropagation();
       slot.avatar?.setAnimation(animSelect.value);
+      if (this.primaryId === slot.id) {
+        this.heroAvatar?.setAnimation?.(animSelect.value);
+        fillAnimationSelect(this.driverAnimSelect, slot.avatar?.animationNames || [], animSelect.value);
+      }
     });
     this.observeSlot(slot);
   }
@@ -257,23 +291,95 @@ export class ModelGallery {
     this.visibilityObserver.observe(slot.card);
   }
 
+  disposeHeroAvatar() {
+    this.heroAvatar?.dispose?.();
+    this.heroAvatar = null;
+    this.heroMount?.replaceChildren();
+  }
+
+  mountHeroAvatar(slot) {
+    this.disposeHeroAvatar();
+    if (!this.heroMount) return;
+
+    const meta = this.riggedModelMeta || { textContent: "" };
+
+    if (slot.kind === "mushy") {
+      this.heroAvatar = new MushyAvatar(this.heroMount, meta);
+      fillAnimationSelect(this.driverAnimSelect, [], null);
+      return;
+    }
+
+    if (slot.kind === "glb" && slot.entry?.available) {
+      this.heroAvatar = new CharacterAvatar(this.heroMount, meta, {
+        id: slot.entry.id,
+        url: modelUrl(slot.entry.file),
+        boneMap: slot.entry.rig === "mixamo" ? MIXAMO_BONE_MAP : MIXAMO_BONE_MAP,
+        defaultAnimation: slot.entry.defaultAnimation || "idle",
+        onAnimationsLoaded: (names, active) => {
+          this.syncDriverAnimSelect(names, active);
+          if (slot.animSelect) fillAnimationSelect(slot.animSelect, names, active);
+        }
+      });
+    } else if (slot.kind === "glb") {
+      this.heroMount.innerHTML =
+        '<div class="model-placeholder"><strong>Awaiting file</strong><span>Add GLB to public/models/</span></div>';
+    }
+  }
+
+  syncDriverAnimSelect(names, active) {
+    if (!this.driverAnimSelect) return;
+    fillAnimationSelect(this.driverAnimSelect, names, active);
+    if (!this._driverAnimHandler) {
+      this._driverAnimHandler = (event) => {
+        const clip = event.target.value;
+        this.heroAvatar?.setAnimation?.(clip);
+        const slot = this.bodySlots.find((entry) => entry.id === this.primaryId);
+        slot?.avatar?.setAnimation?.(clip);
+        if (slot?.animSelect) slot.animSelect.value = clip;
+      };
+      this.driverAnimSelect.addEventListener("change", this._driverAnimHandler);
+    }
+  }
+
+  updateDriverPanel(slot) {
+    if (this.driverName) this.driverName.textContent = slot?.name || "Mushy Rig";
+    if (this.driverMeta) {
+      this.driverMeta.textContent =
+        slot?.notes || slot?.entry?.notes || "Built-in procedural body rig.";
+    }
+    if (this.riggedModelMeta) {
+      this.riggedModelMeta.textContent = `${slot?.name || "Mushy Rig"} · waiting for pose`;
+    }
+  }
+
   setPrimary(id) {
     this.primaryId = id;
     this.bodySlots.forEach(({ card, id: slotId }) => {
       card.classList.toggle("model-card--active", slotId === id);
     });
+
+    const slot = this.bodySlots.find((entry) => entry.id === id) || this.bodySlots[0];
+    this.updateDriverPanel(slot);
+    this.mountHeroAvatar(slot);
+
     const primary = this.getPrimaryAvatar();
     this.onPrimaryChange?.(primary, id);
   }
 
   getPrimaryAvatar() {
+    if (this.heroAvatar) return this.heroAvatar;
     if (this.primaryId === "mushy") return this.mushy;
     const slot = this.bodySlots.find((entry) => entry.id === this.primaryId);
     return slot?.avatar || this.mushy;
   }
 
+  getPrimarySlot() {
+    return this.bodySlots.find((entry) => entry.id === this.primaryId);
+  }
+
   updatePose(poseLandmarks) {
     if (!poseLandmarks) return;
+    this.heroAvatar?.updatePose(poseLandmarks);
     this.mushy?.updatePose(poseLandmarks);
     this.bodySlots.forEach((slot) => {
       if (slot.kind === "glb") slot.avatar?.updatePose(poseLandmarks);
@@ -282,10 +388,12 @@ export class ModelGallery {
 
   dispose() {
     this.visibilityObserver?.disconnect();
+    this.disposeHeroAvatar();
     this.mushy?.dispose?.();
     this.bodySlots.forEach((slot) => slot.avatar?.dispose?.());
     this.faceSlots.forEach((slot) => slot.avatar?.dispose?.());
     this.bodySlots = [];
     this.faceSlots = [];
+    this.mushy = null;
   }
 }

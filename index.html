@@ -15,161 +15,248 @@
   <body>
     <main class="app-shell">
       <section class="workspace" aria-label="Live pose tester">
-        <header class="topbar">
-          <div>
+        <aside class="sidebar" aria-label="Controls">
+          <header class="sidebar-header">
+            <span class="sidebar-icon" aria-hidden="true">🕺</span>
             <h1>Live Pose Tester</h1>
-            <p>Webcam keypoints for your 3D avatar engine.</p>
+          </header>
+
+          <div class="sidebar-section">
+            <label class="field">
+              <span>Source</span>
+              <select id="source">
+                <option value="camera" selected>Webcam</option>
+                <option value="video">Video File</option>
+                <option value="image">Photo / Image</option>
+              </select>
+            </label>
+
+            <label class="field file-field">
+              <span>Load Media</span>
+              <input id="videoFile" type="file" accept="image/*,video/*" />
+            </label>
+
+            <label class="toggle-field">
+              <input id="overlaySkeleton" type="checkbox" checked />
+              <span>Overlay Skeleton</span>
+            </label>
           </div>
-          <div class="status" id="status" role="status" aria-live="polite">
+
+          <div class="sidebar-section">
+            <label class="field">
+              <span>Tracking Mode</span>
+              <select id="mode">
+                <option value="face">Face Only</option>
+                <option value="body">Whole Body</option>
+                <option value="both" selected>Face + Body</option>
+              </select>
+            </label>
+
+            <label class="field field--compact">
+              <span>Visual Style</span>
+              <select id="visualStyle">
+                <option value="glow">Neon Glow Lines</option>
+                <option value="skeleton" selected>Clean Skeleton</option>
+              </select>
+            </label>
+
+            <label class="toggle-field">
+              <input id="loopVideo" type="checkbox" />
+              <span>Loop Video</span>
+            </label>
+          </div>
+
+          <div class="sidebar-section sidebar-section--actions">
+            <button id="retryCamera" type="button" class="btn btn--primary">Start Camera</button>
+            <button id="restartCamera" type="button" class="btn">Restart Camera</button>
+            <button id="playVideo" type="button" class="btn" disabled>Play / Pause</button>
+            <button id="restartVideo" type="button" class="btn" disabled>Restart Video</button>
+          </div>
+
+          <div class="sidebar-section sidebar-section--actions">
+            <button id="refreshModels" type="button" class="btn">Refresh Models</button>
+            <button id="downloadSnapshot" type="button" class="btn">Download Snapshot</button>
+            <button id="copyKeypoints" type="button" class="btn" disabled>Copy JSON</button>
+          </div>
+
+          <div class="sidebar-footer">
+            <div class="models-loaded" id="modelsLoadedIndicator">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span id="modelsLoadedText">Loading models...</span>
+            </div>
+            <span class="version-tag">Version 1.0.0</span>
+          </div>
+
+          <div class="status status--sidebar" id="status" role="status" aria-live="polite">
             Loading models...
           </div>
-        </header>
+        </aside>
 
-        <section class="control-strip" aria-label="Tracker controls">
-          <label class="field">
-            <span>Source</span>
-            <select id="source">
-              <option value="camera" selected>Camera</option>
-              <option value="video">Video File</option>
-              <option value="image">Photo / Image</option>
-            </select>
-          </label>
-
-          <label class="field file-field">
-            <span>Load Media</span>
-            <input id="videoFile" type="file" accept="image/*,video/*" />
-          </label>
-
-          <label class="field">
-            <span>Tracking Mode</span>
-            <select id="mode">
-              <option value="face">Face Only</option>
-              <option value="body">Whole Body</option>
-              <option value="both" selected>Face + Body</option>
-            </select>
-          </label>
-
-          <label class="field">
-            <span>Visual Style</span>
-            <select id="visualStyle">
-              <option value="glow">Neon Glow Lines</option>
-              <option value="skeleton" selected>Clean Skeleton</option>
-            </select>
-          </label>
-
-          <label class="toggle-field">
-            <input id="overlaySkeleton" type="checkbox" checked />
-            <span>Overlay skeleton</span>
-          </label>
-
-          <label class="toggle-field">
-            <input id="loopVideo" type="checkbox" />
-            <span>Loop video</span>
-          </label>
-
-          <div class="button-row" aria-label="Export controls">
-            <button id="copyKeypoints" type="button" disabled>Copy JSON</button>
-            <button id="playVideo" type="button" disabled>Play</button>
-            <button id="restartVideo" type="button" disabled>Restart</button>
-            <button id="downloadSnapshot" type="button">Snapshot</button>
-            <button id="retryCamera" type="button">Start Camera</button>
-            <button id="refreshModels" type="button">Refresh</button>
-          </div>
-        </section>
-
-        <section class="analysis-grid" aria-label="Live media and skeletal breakdown">
-          <article class="media-card media-card--primary column-card" aria-label="Full camera or video feed">
-            <header class="tile-header">
-              <div>
-                <span class="tile-kicker">Column 1</span>
+        <div class="dashboard">
+          <section class="viz-row" aria-label="Live visualizations">
+            <article class="viz-card" aria-label="Raw camera or video feed">
+              <header class="tile-header">
                 <h2>Raw Camera / Video</h2>
+                <span class="tile-badge tile-badge--ready">Ready</span>
+              </header>
+              <div class="tile-player">
+                <canvas id="output" width="1280" height="720" aria-label="Full media output"></canvas>
               </div>
-              <span class="tile-pill" id="frameMeta">Waiting for camera...</span>
-            </header>
-            <div class="tile-player">
-              <canvas id="output" width="1280" height="720" aria-label="Full media output"></canvas>
-            </div>
-            <div class="tile-meta-row">
-              <span id="detectionState">Idle</span>
-              <span>Raw feed · overlay toggle controls skeleton-on-video only</span>
-            </div>
-          </article>
+              <footer class="tile-footer">
+                <span id="frameMeta">Waiting for camera...</span>
+                <span id="detectionState">Idle</span>
+              </footer>
+            </article>
 
-          <article class="media-card column-card" aria-label="Head preview">
-            <header class="tile-header">
-              <div>
-                <span class="tile-kicker">Column 2</span>
-                <h2>Head</h2>
+            <article class="viz-card" aria-label="Rigged textured model">
+              <header class="tile-header">
+                <h2>Rigged Model (Textured)</h2>
+                <span class="tile-badge tile-badge--ready" id="riggedBadge">Ready</span>
+              </header>
+              <div class="tile-player tile-player--3d" id="riggedModelMount" aria-label="Primary rigged model"></div>
+              <footer class="tile-footer">
+                <span id="riggedModelMeta">Mushy Rig · waiting for pose</span>
+              </footer>
+            </article>
+
+            <article class="viz-card" aria-label="Whole body skeleton">
+              <header class="tile-header">
+                <h2>Skeleton (Whole Body)</h2>
+                <span class="tile-badge tile-badge--ready">Ready</span>
+              </header>
+              <div class="tile-player">
+                <canvas id="bodySkeleton" class="focus-canvas" width="420" height="280"
+                  aria-label="Body skeleton preview"></canvas>
               </div>
-              <span class="tile-pill">Face mesh</span>
-            </header>
-            <div class="tile-player">
-              <canvas id="faceSkeleton" class="focus-canvas" width="420" height="520"
-                aria-label="Head and face mesh preview"></canvas>
-            </div>
-            <section class="table-panel" aria-label="Head keypoint table">
-              <h3>Head Table</h3>
+              <footer class="tile-footer">
+                <span id="bodyTrackingMeta">Tracking inactive · 33 pts</span>
+              </footer>
+            </article>
+
+            <article class="viz-card" aria-label="Head landmarks">
+              <header class="tile-header">
+                <h2>Head Landmarks</h2>
+                <span class="tile-badge tile-badge--ready">Ready</span>
+              </header>
+              <div class="tile-player">
+                <canvas id="faceSkeleton" class="focus-canvas" width="420" height="280"
+                  aria-label="Head and face mesh preview"></canvas>
+              </div>
+              <footer class="tile-footer">
+                <span id="faceTrackingMeta">Tracking inactive · 468 pts</span>
+              </footer>
+            </article>
+
+            <article class="viz-card" aria-label="Left hand landmarks">
+              <header class="tile-header">
+                <h2>Left Hand Landmarks</h2>
+                <span class="tile-badge tile-badge--ready">Ready</span>
+              </header>
+              <div class="tile-player">
+                <canvas id="leftHandSkeleton" class="focus-canvas" width="420" height="280"
+                  aria-label="Left hand skeleton preview"></canvas>
+              </div>
+              <footer class="tile-footer">
+                <span id="leftHandTrackingMeta">Tracking inactive · 21 pts</span>
+              </footer>
+            </article>
+
+            <article class="viz-card" aria-label="Right hand landmarks">
+              <header class="tile-header">
+                <h2>Right Hand Landmarks</h2>
+                <span class="tile-badge tile-badge--ready">Ready</span>
+              </header>
+              <div class="tile-player">
+                <canvas id="rightHandSkeleton" class="focus-canvas" width="420" height="280"
+                  aria-label="Right hand skeleton preview"></canvas>
+              </div>
+              <footer class="tile-footer">
+                <span id="rightHandTrackingMeta">Tracking inactive · 21 pts</span>
+              </footer>
+            </article>
+          </section>
+
+          <section class="tables-row" aria-label="Keypoint data tables">
+            <article class="table-card">
+              <header class="table-card-header">
+                <h3>Head Landmarks</h3>
+              </header>
               <div id="faceTable" class="kp-table-wrap">Waiting for detection...</div>
-            </section>
-            <section class="embedded-models" aria-label="Face model gallery section">
-              <div class="embedded-models-header">
-                <h3>Head Models</h3>
-                <span>Face GLBs</span>
-              </div>
-              <div id="faceModelGallery" class="model-gallery" aria-label="Face model gallery"></div>
-            </section>
-          </article>
+            </article>
 
-          <article class="media-card column-card" aria-label="Body preview">
-            <header class="tile-header">
-              <div>
-                <span class="tile-kicker">Column 3</span>
-                <h2>Body</h2>
-              </div>
-              <span class="tile-pill">Pose rig</span>
-            </header>
-            <div class="tile-player">
-              <canvas id="bodySkeleton" class="focus-canvas" width="420" height="520"
-                aria-label="Body skeleton preview"></canvas>
-            </div>
-            <section class="table-panel" aria-label="Body keypoint table">
-              <h3>Body Table</h3>
+            <article class="table-card">
+              <header class="table-card-header">
+                <h3>Body Landmarks</h3>
+              </header>
               <div id="bodyTable" class="kp-table-wrap">Waiting for detection...</div>
-            </section>
-            <section class="embedded-models" aria-label="Body model gallery section">
-              <div class="embedded-models-header">
-                <h3>Body Models</h3>
-                <span>Live rigs</span>
-              </div>
-              <div id="bodyModelGallery" class="model-gallery" aria-label="Body model gallery"></div>
-            </section>
-          </article>
+            </article>
 
-          <article class="media-card column-card" aria-label="Hands preview">
-            <header class="tile-header">
-              <div>
-                <span class="tile-kicker">Column 4</span>
-                <h2>Hands</h2>
+            <article class="table-card">
+              <header class="table-card-header">
+                <h3>Left Hand Landmarks</h3>
+              </header>
+              <div id="leftHandTable" class="kp-table-wrap">Waiting for detection...</div>
+            </article>
+
+            <article class="table-card">
+              <header class="table-card-header">
+                <h3>Right Hand Landmarks</h3>
+              </header>
+              <div id="rightHandTable" class="kp-table-wrap">Waiting for detection...</div>
+            </article>
+          </section>
+
+          <section class="dock-row" aria-label="Models and export">
+            <article class="dock-card dock-card--driver" aria-label="Mushy drivers">
+              <header class="dock-header">
+                <h3>Mushy Drivers</h3>
+                <span>Primary rig control</span>
+              </header>
+              <div class="driver-body">
+                <div class="driver-preview" id="driverMount" aria-label="Driver model preview"></div>
+                <div class="driver-controls">
+                  <p class="driver-name" id="driverName">Mushy Rig</p>
+                  <p class="driver-meta" id="driverMeta">Built-in procedural body rig.</p>
+                  <label class="model-anim-field">
+                    <span>Animation</span>
+                    <select id="driverAnimSelect" class="model-anim-select" disabled>
+                      <option value="">No clips</option>
+                    </select>
+                  </label>
+                  <button id="driverExportBtn" type="button" class="btn btn--small">Export JSON Pose</button>
+                </div>
               </div>
-              <span class="tile-pill">Left + right</span>
-            </header>
-            <div class="tile-player">
-              <canvas id="handsSkeleton" class="focus-canvas" width="420" height="520"
-                aria-label="Hand skeleton preview"></canvas>
-            </div>
-            <section class="table-panel" aria-label="Hands keypoint table">
-              <h3>Hands Table</h3>
-              <div id="handsTable" class="kp-table-wrap">Waiting for detection...</div>
-            </section>
-            <section class="embedded-models embedded-models--empty" aria-label="Hand models placeholder">
-              <div class="embedded-models-header">
-                <h3>Hand Models</h3>
-                <span>Not wired</span>
-              </div>
-              <p class="empty-note">Hand model slots can be added here later.</p>
-            </section>
-          </article>
-        </section>
+            </article>
+
+            <article class="dock-card dock-card--models" aria-label="Body models">
+              <header class="dock-header">
+                <h3>Body Models</h3>
+                <span>Click a card to drive the hero viewport</span>
+              </header>
+              <div id="bodyModelGallery" class="model-gallery" aria-label="Body model gallery"></div>
+              <div id="faceModelGallery" class="model-gallery model-gallery--face" aria-label="Face model gallery"></div>
+            </article>
+
+            <article class="dock-card dock-card--export" aria-label="Export and status">
+              <header class="dock-header">
+                <h3>Export / Status</h3>
+                <span id="systemStatus" class="system-status">All systems operational</span>
+              </header>
+              <dl class="export-paths">
+                <div>
+                  <dt>Body exports</dt>
+                  <dd><code>public/models/body/</code></dd>
+                </div>
+                <div>
+                  <dt>Registry</dt>
+                  <dd><code>public/models/registry.json</code></dd>
+                </div>
+              </dl>
+              <p class="export-meta">Last export: <span id="lastExportTime">never</span></p>
+              <p class="export-hint">Use Copy JSON or Export JSON Pose to capture landmark data.</p>
+            </article>
+          </section>
+        </div>
       </section>
     </main>
 
