@@ -999,6 +999,25 @@ function drawHandSet(ctx, project, landmarks, color) {
   });
 }
 
+// Draw the short connector from a hand skeleton's root to whichever pose wrist
+// (15=left, 16=right) is physically closest. Swap-invariant: if the hand arrays are
+// swapped, the root still bridges to its true wrist instead of stretching across the body.
+function bridgeHandToNearestWrist(ctx, project, pose, hand, color) {
+  if (!pose || !hand?.length) return;
+  const root = hand[0];
+  const lw = pose[15];
+  const rw = pose[16];
+  const wrist = !lw ? rw : !rw ? lw : sqDist(root, lw) <= sqDist(root, rw) ? lw : rw;
+  if (!wrist) return;
+  drawConnectorSet(ctx, project, { 0: wrist, 1: root }, [[0, 1]], color, 2.4);
+}
+
+function sqDist(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
+}
+
 function drawSingleHandSkeleton(ctx, canvas, landmarks, message, color) {
   resizeCanvasToDisplay(canvas);
   if (!landmarks?.length) {
@@ -1091,12 +1110,12 @@ function drawFullSkeleton() {
   drawHandSet(ctx, project, leftHand, "#ff7bd5");
   drawHandSet(ctx, project, rightHand, "#59a6ff");
 
-  if (pose && leftHand?.length) {
-    drawConnectorSet(ctx, project, { 0: pose[15], 1: leftHand[0] }, [[0, 1]], "#ff7bd5", 2.4);
-  }
-  if (pose && rightHand?.length) {
-    drawConnectorSet(ctx, project, { 0: pose[16], 1: rightHand[0] }, [[0, 1]], "#59a6ff", 2.4);
-  }
+  // Bridge each hand skeleton to its NEAREST pose wrist. Pairing by hardcoded index
+  // (pose[15]→leftHand) breaks when "Swap Hands (L/R)" swaps the landmark arrays: the
+  // hand roots move across the body while the wrists don't, stretching the bridge into a
+  // band across the torso. Nearest-wrist pairing is swap-invariant.
+  bridgeHandToNearestWrist(ctx, project, pose, leftHand, "#ff7bd5");
+  bridgeHandToNearestWrist(ctx, project, pose, rightHand, "#59a6ff");
 }
 
 function updateKeypointsPanel() {
