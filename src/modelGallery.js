@@ -523,6 +523,9 @@ export class ModelGallery {
     if (!results) return;
     const payload = {
       poseLandmarks: results.poseLandmarks,
+      // results.ea is the legacy @mediapipe/holistic field for world (metric 3D) landmarks.
+      // Used by Kalidokit to fix depth noise (world coords vs unreliable normalized z).
+      worldLandmarks: results.ea || null,
       faceLandmarks: results.faceLandmarks,
       leftHandLandmarks: results.leftHandLandmarks,
       rightHandLandmarks: results.rightHandLandmarks,

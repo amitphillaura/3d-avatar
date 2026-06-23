@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { Pose as KalidoPose } from "kalidokit";
 import { MushyAvatar } from "./avatar.js";
 import {
   findHeadBone,
@@ -10,6 +11,24 @@ import {
   resolveModelBone
 } from "./mixamoRig.js";
 import { MUSHY_FOOT_Y, MUSHY_HIP_Y } from "./poseSkeleton.js";
+
+// Maps Kalidokit's VRM-named output to Mixamo/Meshy bone candidates.
+// resolveModelBone tries each name in order and returns the first match.
+// Works for both Mixamo (mixamorigX names) and Meshy (shorthand names).
+const KALIDOKIT_BONE_DEFS = [
+  ["RightUpperArm",  "mixamorigRightArm",    "RightArm"],
+  ["RightLowerArm",  "mixamorigRightForeArm", "RightForeArm"],
+  ["RightHand",      "mixamorigRightHand",    "RightHand"],
+  ["LeftUpperArm",   "mixamorigLeftArm",      "LeftArm"],
+  ["LeftLowerArm",   "mixamorigLeftForeArm",  "LeftForeArm"],
+  ["LeftHand",       "mixamorigLeftHand",     "LeftHand"],
+  ["Spine",          "mixamorigSpine",        "Spine"],
+  ["Hips",           "mixamorigHips",         "Hips"],
+  ["RightUpperLeg",  "mixamorigRightUpLeg",   "RightUpLeg"],
+  ["RightLowerLeg",  "mixamorigRightLeg",     "RightLeg"],
+  ["LeftUpperLeg",   "mixamorigLeftUpLeg",    "LeftUpLeg"],
+  ["LeftLowerLeg",   "mixamorigLeftLeg",      "LeftLeg"],
+];
 
 function midpoint(out, a, b) {
   return out.addVectors(a, b).multiplyScalar(0.5);
@@ -86,6 +105,7 @@ export class MushyModelAvatar extends MushyAvatar {
     this.limbEntries = [];
     this.wristEntries = [];
     this.fingerEntries = [];
+    this.kalidoBones = [];
     this.spineEntry = null;
     this.neckEntry = null;
     this.headBone = null;
@@ -93,6 +113,11 @@ export class MushyModelAvatar extends MushyAvatar {
     this.idleAction = null;
     this.clips = [];
     this.animationNames = [];
+
+    // Kalidokit inputs — captured each frame in updateTracking().
+    this.worldLandmarks = null;  // results.ea — metric 3D world coords (fixes depth noise)
+    this.rawPoseLandmarks = null; // normalized 2D pose landmarks
+    this.lastVideo = null;        // video element for Kalidokit image-size inference
 
     this._dir = new THREE.Vector3();
     this._a = new THREE.Vector3();
@@ -105,6 +130,14 @@ export class MushyModelAvatar extends MushyAvatar {
     this.loader = new GLTFLoader();
     if (this.modelUrl) this.loadModel(this.modelUrl);
     else this.applySkeletonVisibility();
+  }
+
+  updateTracking(payload) {
+    // Capture Kalidokit inputs before the base class processes landmarks.
+    this.worldLandmarks = payload?.worldLandmarks || null;
+    this.rawPoseLandmarks = payload?.poseLandmarks || null;
+    this.lastVideo = payload?.media?.video || null;
+    super.updateTracking(payload);
   }
 
   setAnimation(clipName) {
@@ -237,6 +270,13 @@ export class MushyModelAvatar extends MushyAvatar {
 
     if (!this.previewOnly) this.buildHandEntries();
 
+    // Build Kalidokit bone map: VRM output key → Three.js bone object.
+    // resolveModelBone tries each candidate name, so Mixamo and Meshy both work.
+    this.kalidoBones = KALIDOKIT_BONE_DEFS.flatMap(([vrmKey, ...names]) => {
+      const bone = names.reduce((found, n) => found || resolveModelBone(this.model, n), null);
+      return bone ? [{ vrmKey, bone }] : [];
+    });
+
     const spine = findSpineBone(this.model);
     const spineChild =
       resolveModelBone(this.model, "mixamorigSpine1") ||
@@ -365,6 +405,51 @@ export class MushyModelAvatar extends MushyAvatar {
 
   setTrackFingers(value) {
     this.trackFingers = Boolean(value);
+  }
+
+  /**
+   * Apply Kalidokit.Pose.solve() rotations to the mapped GLB bones.
+   *
+   * Kalidokit feeds POSE_WORLD_LANDMARKS (results.ea) as lm3d, which gives
+   * metric-scale 3D coords with hips at origin — eliminating the depth noise
+   * that caused hands to clip into the torso with the old swing-only solver.
+   * Its internal rigArm/rigLegs functions also add anatomical clamping and
+   * stabilisation that the setFromUnitVectors approach lacked.
+   *
+   * Kalidokit outputs rotations in VRM bone-local space.  For Mixamo/Meshy
+   * models exported from a T-pose the bind quaternions are near-identity, so
+   * the VRM-convention eulers apply directly with no change-of-basis.
+   *
+   * Returns true when at least some rotations were applied.
+   */
+  _driveKalidokit() {
+    if (!this.kalidoBones.length || !this.worldLandmarks || !this.rawPoseLandmarks) return false;
+    if (this.worldLandmarks.length < 17 || this.rawPoseLandmarks.length < 17) return false;
+
+    let solved;
+    try {
+      solved = KalidoPose.solve(this.worldLandmarks, this.rawPoseLandmarks, {
+        runtime: "mediapipe",
+        video: this.lastVideo || undefined,
+        enableLegs: true
+      });
+    } catch {
+      return false;
+    }
+    if (!solved) return false;
+
+    const _e = new THREE.Euler(0, 0, 0, "XYZ");
+    const _q = new THREE.Quaternion();
+    this.kalidoBones.forEach(({ vrmKey, bone }) => {
+      // Hips has a nested { position, rotation } shape; everything else is a plain Vector3.
+      const rot = vrmKey === "Hips" ? solved.Hips?.rotation : solved[vrmKey];
+      if (!rot) return;
+      _e.set(rot.x, rot.y, rot.z);
+      _q.setFromEuler(_e);
+      bone.quaternion.slerp(_q, 0.45);
+    });
+
+    return true;
   }
 
   footEnd(side, out) {
@@ -517,6 +602,10 @@ export class MushyModelAvatar extends MushyAvatar {
         this.fingerEntries.forEach((entry) => entry.bone.quaternion.slerp(entry.restLocalQuat, 0.25));
       }
     }
+
+    // Kalidokit pass: runs AFTER aimSegment so its result wins for covered bones.
+    // Uses world landmarks (metric 3D) for correct depth — fixes hands-in-body.
+    if (!this.previewOnly) this._driveKalidokit();
 
     this.model.updateMatrixWorld(true);
   }
