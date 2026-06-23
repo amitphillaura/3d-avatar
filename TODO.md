@@ -17,20 +17,29 @@
 - **Body model scan** — `scripts/scan-body-models.js` + vite plugin → `body/manifest.json`.
 - **Registry bodyOverrides** — metadata for Meshy filenames without listing every slot.
 
+## ✅ Done (rigged model rebuild)
+
+- **Fixed hero camera** (`frameBodyCameraFixed`) — constant full-body frame; no more zoom drift,
+  stays in frame when paused. (Replaced per-frame `frameCameraToPoints` follow.)
+- **Pause = hold last pose** — stale tracking holds; bind reset only on explicit `clearTracking()`.
+- **Rig-agnostic hands** — `findHandBone`/`buildHandEntries` scan the hand subtree (Mixamo/Meshy/…);
+  wrist-only default + **Track Fingers** toggle with slerp damping.
+- **Head bone** — removed the cross-space quaternion copy; head follows the neck.
+- **Bigger viewers** — 3-up primary row; anatomical diagnostics; tables as toggle popups.
+
 ## Open — rig / retarget
 
-- **Rigged zoom polish** — hero camera uses `spanScale: 0.68` on landmarks; may need per-model
-  tuning so GLB fill matches Full Skeleton on all poses. Test Violet Vanguard + Gray Bodysuit.
-- **Hands on GLB** — Mushy hand cylinders drive; finger bones mapped for Mixamo, verify Meshy exports.
-- **Head/neck on GLB** — neck aims shoulder-mid → Mushy head; head bone copies Mushy head quat.
+- **Per-finger fidelity** — fingers (Track Fingers on) still rely on noisy Holistic hand data;
+  consider confidence gating / heavier smoothing, or the rest-orientation idea from `retarget_bvh`.
+- **Verify Meshy exports** — confirm `findHandBone` resolves real Meshy hand/finger names on
+  Gray Bodysuit / Violet Vanguard (Meshy GLBs are gitignored — not in repo).
+- **Head look (optional)** — drive the GLB head bone toward the nose in a space-correct way
+  (currently follows the neck only).
 - **Archive `glbAvatar.js`** — dead code in runtime bundle; delete or move to `archive/` when safe.
 
 ## Open — UX / media
 
-- **Visual target pass** — user reference screenshot at
-  `/Users/amit/Downloads/504C8BFC-24F6-4935-B95B-32928B2D465D.PNG` (not yet fully matched).
 - **Play video / Photos library** — broader codec/container testing on user exports.
-- **Scrub while paused** — optional: release scrub without auto-play (user preference TBD).
 - **Keyboard shortcuts** — space = play/pause, arrow keys = step frames (nice-to-have).
 
 ## Open — models

@@ -37,26 +37,26 @@ npm audit --audit-level=low
 **Sidebar** — Source (camera / video / image), media picker, tracking mode, visual style,
 Refresh Models, snapshot/JSON export.
 
-**Top analysis row (7 columns):**
+**Primary row (3 big viewers):**
 
-| Column | Content |
+| Tile | Content |
 |--------|---------|
 | Raw Video | MediaPipe overlay + camera/video controls + **frame scrubber** |
 | Full Skeleton | Combined 2D body + neck + feet + face + hands |
-| **Rigged Model** | Hero GLB driven by Mushy (`#riggedModelSelect` dropdown) |
-| Body | 2D body skeleton + landmarks table |
-| Head | Face mesh + head table |
-| Left / Right Hand | Hand skeletons + tables |
+| **Rigged Model** | Hero GLB driven by Mushy (`#riggedModelSelect` dropdown), fixed-frame camera |
 
-**Bottom dock** — Mushy Drivers (hero anim select), Body Models gallery cards, Export/Status.
+**Lower deck** — **anatomical diagnostics** (`.diag-anatomy`: Head on top, Body center, Left/Right
+Hand flanking; each a small skeleton tile with a **Data** button that pops the landmark table) +
+the dock (Mushy Drivers, Body Models gallery, Export/Status).
 
-### Layout sync rules
+### Layout rules
 
-- All non-raw player heights match the raw video player via CSS `--viz-player-height`
-  (set in `syncVizPlayerLayout()` in `app.js`).
-- All viz tile headers share the same min-height as the Rigged Model picker header
-  (label + 26px control row).
-- Hero 3D viewport letterboxes to video aspect (`--viz-aspect`) like the 2D skeleton panes.
+- The 3 primary viewers fill their grid cells; `syncVizPlayerLayout()` sets `--viz-aspect`
+  (from the source) so the hero 3D viewport and 2D panes letterbox to the video aspect.
+- Primary-row tile headers share a min-height with the Rigged Model picker header so the row
+  aligns (label + 26px control row).
+- Landmark tables live in `.kp-popup` modals toggled by `.diag-data-btn` (`setupLandmarkPopups`).
+- Strict no-scroll on the wide local display; below 1500px the deck stacks and scrolls.
 
 ## Architecture — pose → rig
 
@@ -115,8 +115,12 @@ Optional metadata in `registry.json` → `bodyOverrides` keyed by filename.
   causing bounce/root motion).
 - User picks a clip from hero dropdown or Mushy Drivers dock to preview an animation.
 - `fitModelToSkeleton()` scales to ~1.85 m and aligns hips to `MUSHY_HIP_Y`.
-- Hero camera uses `frameCameraToPoints()` — letterboxed viewport, centers on subject,
-  `spanScale: 0.68` when tracking (landmarks span wider than skinned mesh).
+- **Hero camera is fixed** (`frameBodyCameraFixed`): a constant full-body frame over the
+  bounded Mushy space — no per-frame follow, so it never jitters and stays in frame on pause.
+- **Pause = hold last pose.** When tracking goes stale the model holds its pose; it resets to
+  bind only on an explicit `clearTracking()` (source switch / stop).
+- **Hands:** rig-agnostic (`findHandBone`/`buildHandEntries` scan the hand subtree), wrist-only
+  by default; **Track Fingers** sidebar toggle enables slerp-damped per-finger driving.
 
 ## Dev hooks
 

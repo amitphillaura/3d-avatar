@@ -43,7 +43,7 @@ use the media file picker with a video or image.
 - `public/models/body/` — drop Meshy/custom body GLBs (**gitignored**); auto-scanned at build.
 - `public/models/face/` — drop face GLBs here (**gitignored**).
 - `public/models/character.glb` — bundled Mixamo Xbot (committed).
-- `index.html` — sidebar + 7-column analysis grid + model dock.
+- `index.html` — sidebar + primary row (3 big viewers) + anatomical diagnostics + model dock.
 - `public/mediapipe/` — vendored MediaPipe Holistic runtime.
 - `HANDOFF.md`, `TODO.md` — handoff context and open work.
 
@@ -64,7 +64,12 @@ User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 - `modelComplexity` is `1` → requires `pose_landmark_full.tflite`.
 - Hero GLB pose = Mushy `mapPoseLandmark` points + bone `aimSegment` (not legacy CAL / `glbAvatar.js`).
 - Meshy models hold **bind pose on load**; pick animation from dropdown to preview a clip.
-- Panel player heights sync to raw video tile via `--viz-player-height`; hero 3D letterboxes to `--viz-aspect`.
+- **Hero camera is fixed** (`frameBodyCameraFixed`) — a constant full-body frame, no per-frame follow.
+- **Pause holds the last pose** (stale tracking ≠ reset). Bind/idle reset only on `clearTracking()`
+  / `ModelGallery.resetTracking()` (explicit source switch / stop, via `resetDetection`).
+- **Hands are rig-agnostic + wrist-only by default**; `findHandBone`/`buildHandEntries` scan the
+  hand subtree. Sidebar **Track Fingers** toggle (`trackFingers`) opts into per-finger driving.
+- Hero 3D letterboxes to `--viz-aspect`; the 3 primary viewers fill their grid cells.
 - Dev hooks: `window.__avatar`, `window.__modelGallery`, `window.__loadVideoURL`,
   `window.__playVideo`, `window.__processFrame`, `window.__video`, `window.__image`.
 

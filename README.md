@@ -25,9 +25,11 @@ with an image/video file.
 
 ## UI
 
-The current UI is tuned for a 3440×1440 local display: a four-column analysis grid with
-equal 16:9 tiles for Raw Camera/Video, Head, Body, and Hands. Head/Body/Hands tables and
-model cards live in their matching columns.
+The UI is tuned for a wide local display: a primary row of three big viewers — Raw
+Camera/Video, Full Skeleton, and the Rigged Model — over a lower deck with the per-part
+diagnostics laid out anatomically (head on top, body in the middle, hands on either side).
+Landmark tables open as toggle popups via each tile's **Data** button. Strict no-scroll on
+the wide display; it stacks and scrolls on smaller screens.
 
 ## Docs
 

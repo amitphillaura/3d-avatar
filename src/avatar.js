@@ -417,6 +417,20 @@ export class MushyAvatar {
     this.refreshMeta();
   }
 
+  // Explicit reset (source switch / stop). Distinct from a paused video: when tracking
+  // merely goes stale the rig HOLDS its last pose, but clearTracking() forces idle/bind.
+  clearTracking() {
+    this.latestTrackedAt = 0;
+    this.latestFaceTrackedAt = 0;
+    this.latestHandTrackedAt = { left: 0, right: 0 };
+    this.activePoints.clear();
+    this.faceVisible.clear();
+    this.faceRig = null;
+    Object.values(this.hands).forEach((rig) => {
+      rig.active = false;
+    });
+  }
+
   updateHandSide(side, landmarks) {
     const rig = this.hands[side];
     if (!rig || !landmarks?.length) {
@@ -770,81 +784,6 @@ export class MushyAvatar {
     }
   }
 
-  collectFramingPoints() {
-    const points = [];
-    const bodyActive = performance.now() - this.latestTrackedAt <= 900;
-
-    if (bodyActive) {
-      this.activePoints.forEach((name) => {
-        const point = this.points.get(name);
-        if (point) points.push(point);
-      });
-    }
-
-    if (this.isFaceActive()) {
-      this.faceVisible.forEach((name) => {
-        const point = this.facePoints.get(name);
-        if (point) points.push(point);
-      });
-    }
-
-    ["left", "right"].forEach((side) => {
-      if (!this.isHandSideActive(side)) return;
-      this.hands[side].points.forEach((point) => points.push(point));
-    });
-
-    return points;
-  }
-
-  frameCameraToPoints(points, { spanScale = 1 } = {}) {
-    if (!points.length) {
-      this.frameBodyCameraDefault();
-      return;
-    }
-
-    const aspect = this.framedViewport ? this.getViewportAspect() : this.camera.aspect;
-    const viewW =
-      this.framedViewport && this._viewport.width > 0
-        ? this._viewport.width
-        : Math.max(this.mount.clientWidth, 1);
-    const viewH =
-      this.framedViewport && this._viewport.height > 0
-        ? this._viewport.height
-        : Math.max(this.mount.clientHeight, 1);
-    const pad = 16;
-
-    let minXWorld = Infinity;
-    let maxXWorld = -Infinity;
-    let minY = Infinity;
-    let maxY = -Infinity;
-    let sumZ = 0;
-
-    points.forEach((point) => {
-      minXWorld = Math.min(minXWorld, point.x);
-      maxXWorld = Math.max(maxXWorld, point.x);
-      minY = Math.min(minY, point.y);
-      maxY = Math.max(maxY, point.y);
-      sumZ += point.z;
-    });
-
-    const spanXWorld = Math.max((maxXWorld - minXWorld) * spanScale, 0.35);
-    const spanY = Math.max((maxY - minY) * spanScale, 0.35);
-    const lookX = (minXWorld + maxXWorld) * 0.5;
-    const lookY = (minY + maxY) * 0.5;
-    const lookZ = sumZ / points.length;
-    const marginY = viewH / Math.max(viewH - pad * 2, 1);
-    const marginX = viewW / Math.max(viewW - pad * 2, 1);
-
-    const vFovRad = (this.camera.fov * Math.PI) / 180;
-    const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * Math.max(this.camera.aspect, 0.01));
-    const distV = (spanY * marginY) / (2 * Math.tan(vFovRad / 2));
-    const distH = (spanXWorld * marginX) / (2 * Math.tan(hFovRad / 2));
-    const distance = Math.max(Math.max(distV, distH), 1.4);
-
-    this.camera.position.set(lookX, lookY, lookZ + distance);
-    this.camera.lookAt(lookX, lookY, lookZ);
-  }
-
   frameBodyCameraDefault() {
     let lookY = 0.42;
     let lookZ = -0.48;
@@ -884,14 +823,33 @@ export class MushyAvatar {
 
   frameBodyCamera() {
     if (this.framedViewport) {
-      const points = this.collectFramingPoints();
-      if (points.length) {
-        this.frameCameraToPoints(points);
-        return;
-      }
+      this.frameBodyCameraFixed();
+      return;
     }
 
     this.frameBodyCameraDefault();
+  }
+
+  // Constant framing over the bounded Mushy landmark space. `mapPoseLandmark` maps
+  // normalized landmarks into a fixed range, so a single deterministic camera always
+  // contains a standing figure — it never jitters and the subject stays in frame even
+  // while paused. (Replaces the old per-frame frameCameraToPoints follow that "zoomed
+  // all over" because it re-fit the noisy landmark bounding box every frame.)
+  frameBodyCameraFixed() {
+    const centerX = 0;
+    const centerY = 0.38;
+    const centerZ = -0.65;
+    const halfX = 1.3; // torso + arms; fully-extended arms may transiently approach the edge
+    const halfY = 2.2; // head-to-feet of a standing figure
+
+    const vFovRad = (this.camera.fov * Math.PI) / 180;
+    const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * Math.max(this.camera.aspect, 0.01));
+    const distV = halfY / Math.tan(vFovRad / 2);
+    const distH = halfX / Math.tan(hFovRad / 2);
+    const distance = Math.max(distV, distH, 1.4);
+
+    this.camera.position.set(centerX, centerY, centerZ + distance);
+    this.camera.lookAt(centerX, centerY, centerZ);
   }
 
   resize() {

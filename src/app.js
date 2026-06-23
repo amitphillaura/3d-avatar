@@ -29,6 +29,7 @@ const videoFileInput = document.getElementById("videoFile");
 const modeSelect = document.getElementById("mode");
 const visualStyleSelect = document.getElementById("visualStyle");
 const overlaySkeletonToggle = document.getElementById("overlaySkeleton");
+const trackFingersToggle = document.getElementById("trackFingers");
 const loopVideoToggle = document.getElementById("loopVideo");
 const bodyTableEl = document.getElementById("bodyTable");
 const faceTableEl = document.getElementById("faceTable");
@@ -194,11 +195,15 @@ function setMediaButtonLabel(button, icon, label) {
   if (!button) return;
   const iconEl = button.querySelector(".media-btn-icon");
   if (iconEl) iconEl.textContent = icon;
-  for (const node of button.childNodes) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      node.textContent = ` ${label}`;
-      break;
-    }
+  // Use the first non-whitespace text node (the real label), not the indentation
+  // whitespace before the icon span — otherwise the label gets duplicated.
+  const labelNode = Array.from(button.childNodes).find(
+    (node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== ""
+  );
+  if (labelNode) {
+    labelNode.textContent = ` ${label}`;
+  } else {
+    button.appendChild(document.createTextNode(` ${label}`));
   }
 }
 
@@ -1316,6 +1321,7 @@ function setupModels() {
 
 function resetDetection() {
   latestResults = null;
+  modelGallery?.resetTracking?.();
   bodyTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
   faceTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
   leftHandTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
@@ -1754,6 +1760,11 @@ function bindEvents() {
     processCurrentFrame();
   });
 
+  trackFingersToggle?.addEventListener("change", () => {
+    modelGallery?.setTrackFingers?.(trackFingersToggle.checked);
+    setStatus(`Rigged finger tracking: ${trackFingersToggle.checked ? "on" : "off"}.`);
+  });
+
   loopVideoToggle?.addEventListener("change", () => {
     videoElement.loop = loopVideoToggle.checked;
     setStatus(`Video loop: ${loopVideoToggle.checked ? "on" : "off"}.`);
@@ -1861,6 +1872,38 @@ function initCanvasPlaceholder(message = "Camera preview will appear here") {
   canvasCtx.fillText(message, canvasElement.width / 2, canvasElement.height / 2);
 }
 
+// Landmark tables live in toggle-on/off popups so the diagnostic tiles stay compact.
+function setupLandmarkPopups() {
+  const dataButtons = Array.from(document.querySelectorAll(".diag-data-btn"));
+  const popups = Array.from(document.querySelectorAll(".kp-popup"));
+
+  const closeAll = () => {
+    popups.forEach((popup) => {
+      popup.hidden = true;
+    });
+    dataButtons.forEach((btn) => btn.classList.remove("is-active"));
+  };
+
+  dataButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const popup = document.getElementById(btn.dataset.popup);
+      if (!popup) return;
+      const willShow = popup.hidden;
+      closeAll();
+      popup.hidden = !willShow;
+      btn.classList.toggle("is-active", willShow);
+    });
+  });
+
+  document.querySelectorAll(".kp-popup-close").forEach((btn) => {
+    btn.addEventListener("click", () => closeAll());
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeAll();
+  });
+}
+
 async function initModelGallery() {
   modelGallery = new ModelGallery({
     bodyMount: bodyModelGalleryEl,
@@ -1877,6 +1920,7 @@ async function initModelGallery() {
     }
   });
   await modelGallery.init();
+  modelGallery.setTrackFingers(Boolean(trackFingersToggle?.checked));
   window.__avatar = modelGallery.getPrimaryAvatar();
   window.__modelGallery = modelGallery;
   setModelsLoaded(true);
@@ -1917,6 +1961,7 @@ function loadImageURL(url, name = "image") {
 
 function init() {
   bindEvents();
+  setupLandmarkPopups();
   applyPlaybackSpeed();
   syncSourceUI();
   refreshRawPanel();

@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MushyAvatar } from "./avatar.js";
-import { MIXAMO_LEFT_HAND_BONES, MIXAMO_RIGHT_HAND_BONES } from "./handRig.js";
 import {
   findHeadBone,
   findHipsBone,
@@ -16,8 +15,39 @@ function midpoint(out, a, b) {
   return out.addVectors(a, b).multiplyScalar(0.5);
 }
 
-/** Same direction math as Mushy setCylinderBetween — applied to a skinned bone. */
-function aimSegment(entry, start, end, dir, delta, desired, parentQuat) {
+// MediaPipe hand-landmark index of the proximal (base) joint of each finger.
+const FINGER_BASE = { thumb: 1, index: 5, middle: 9, ring: 13, pinky: 17 };
+// Hand-landmark indices used to orient the wrist/hand bone (wrist -> middle MCP).
+const WRIST_FROM = 0;
+const WRIST_TO = 9;
+
+/** Classify a bone name into a finger (rig-agnostic: Mixamo, Meshy, Rigify, ...). */
+function classifyFinger(name) {
+  const n = name.toLowerCase();
+  if (n.includes("thumb")) return "thumb";
+  if (n.includes("index")) return "index";
+  if (n.includes("middle")) return "middle";
+  if (n.includes("ring")) return "ring";
+  if (n.includes("pinky") || n.includes("little")) return "pinky";
+  return null;
+}
+
+/** Hierarchy depth of `node` below `ancestor` (Infinity if not a descendant). */
+function depthFrom(ancestor, node) {
+  let depth = 0;
+  let cur = node;
+  while (cur && cur !== ancestor) {
+    cur = cur.parent;
+    depth += 1;
+  }
+  return cur === ancestor ? depth : Infinity;
+}
+
+/**
+ * Same direction math as Mushy setCylinderBetween — applied to a skinned bone.
+ * `blend` < 1 slerps toward the target instead of snapping (used to damp noisy hands).
+ */
+function aimSegment(entry, start, end, dir, delta, desired, parentQuat, blend = 1) {
   dir.subVectors(end, start);
   if (dir.lengthSq() < 1e-6) return false;
   dir.normalize();
@@ -25,7 +55,9 @@ function aimSegment(entry, start, end, dir, delta, desired, parentQuat) {
   desired.multiplyQuaternions(delta, entry.restWorldQuat);
   entry.bone.parent.getWorldQuaternion(parentQuat);
   parentQuat.invert();
-  entry.bone.quaternion.multiplyQuaternions(parentQuat, desired);
+  desired.premultiply(parentQuat); // world target -> bone-local target
+  if (blend >= 1) entry.bone.quaternion.copy(desired);
+  else entry.bone.quaternion.slerp(desired, blend);
   return true;
 }
 
@@ -40,16 +72,20 @@ export class MushyModelAvatar extends MushyAvatar {
     });
     this.modelUrl = options.url || null;
     this.previewOnly = Boolean(options.previewOnly);
-    this.boneMap = options.boneMap || getBoneMapForRig(options.rig || "mixamo");
+    this.rig = options.rig || "mixamo";
+    this.boneMap = options.boneMap || getBoneMapForRig(this.rig);
     this.defaultClip = options.defaultAnimation || "idle";
     this.onAnimationsLoaded = options.onAnimationsLoaded;
     this.showDebugSkeleton = !this.modelUrl || options.showDebugSkeleton === true;
+    // Hands are wrist-only by default (stable). Fingers are opt-in (noisy MediaPipe data).
+    this.trackFingers = Boolean(options.trackFingers);
 
     this.model = null;
     this.modelReady = false;
     this.modelLoading = false;
     this.limbEntries = [];
-    this.handEntries = [];
+    this.wristEntries = [];
+    this.fingerEntries = [];
     this.spineEntry = null;
     this.neckEntry = null;
     this.headBone = null;
@@ -186,7 +222,8 @@ export class MushyModelAvatar extends MushyAvatar {
 
   buildBoneEntries() {
     this.limbEntries = [];
-    this.handEntries = [];
+    this.wristEntries = [];
+    this.fingerEntries = [];
     this.spineEntry = null;
     this.neckEntry = null;
     this.headBone = null;
@@ -198,30 +235,7 @@ export class MushyModelAvatar extends MushyAvatar {
       this.addSegmentEntry(bone, child, entry.from, entry.to, entry.limb, this.limbEntries);
     });
 
-    if (!this.previewOnly) {
-      ["left", "right"].forEach((side) => {
-        const map = side === "left" ? MIXAMO_LEFT_HAND_BONES : MIXAMO_RIGHT_HAND_BONES;
-        map.forEach(({ bone, child, from, to }) => {
-          const boneObj = resolveModelBone(this.model, bone);
-          let childObj = resolveModelBone(this.model, child);
-          if (boneObj && !childObj) childObj = boneObj.children.find((node) => node.isBone);
-          if (!boneObj || !childObj) return;
-          const a = new THREE.Vector3();
-          const b = new THREE.Vector3();
-          boneObj.getWorldPosition(a);
-          childObj.getWorldPosition(b);
-          this.handEntries.push({
-            side,
-            from,
-            to,
-            bone: boneObj,
-            restLocalQuat: boneObj.quaternion.clone(),
-            restWorldQuat: boneObj.getWorldQuaternion(new THREE.Quaternion()),
-            restWorldDir: b.sub(a).normalize()
-          });
-        });
-      });
-    }
+    if (!this.previewOnly) this.buildHandEntries();
 
     const spine = findSpineBone(this.model);
     const spineChild =
@@ -256,6 +270,101 @@ export class MushyModelAvatar extends MushyAvatar {
       };
       this.headBone = head;
     }
+  }
+
+  findHandBone(side) {
+    const candidates =
+      side === "left"
+        ? ["mixamorigLeftHand", "mixamorig:LeftHand", "LeftHand", "hand.L", "DEF-handL", "Hand_L"]
+        : ["mixamorigRightHand", "mixamorig:RightHand", "RightHand", "hand.R", "DEF-handR", "Hand_R"];
+    for (const name of candidates) {
+      const bone = resolveModelBone(this.model, name);
+      if (bone) return bone;
+    }
+    // Fuzzy fallback: a bone named like a hand on the correct side, with finger children.
+    let found = null;
+    this.model.traverse((node) => {
+      if (found || !node.isBone) return;
+      const n = node.name.toLowerCase();
+      const sideOk = side === "left" ? n.includes("left") || /(^|_|\.)l($|_|\.)/.test(n) : n.includes("right") || /(^|_|\.)r($|_|\.)/.test(n);
+      if (n.includes("hand") && sideOk) found = node;
+    });
+    return found;
+  }
+
+  // Rig-agnostic hand rig: scan each hand bone's subtree, group bones by finger, and
+  // build a wrist entry (always driven) plus per-finger entries (driven only when
+  // trackFingers is on). Works for Mixamo, Meshy, Rigify, etc. without hardcoded names.
+  buildHandEntries() {
+    this.wristEntries = [];
+    this.fingerEntries = [];
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+
+    ["left", "right"].forEach((side) => {
+      const hand = this.findHandBone(side);
+      if (!hand) return;
+
+      const groups = { thumb: [], index: [], middle: [], ring: [], pinky: [] };
+      hand.traverse((node) => {
+        if (!node.isBone || node === hand) return;
+        const finger = classifyFinger(node.name);
+        if (finger) groups[finger].push(node);
+      });
+
+      // Wrist: orient the hand bone toward its finger fan (reference = middle/any root).
+      const refChild =
+        groups.middle[0] ||
+        groups.index[0] ||
+        groups.ring[0] ||
+        groups.pinky[0] ||
+        hand.children.find((node) => node.isBone);
+      if (refChild) {
+        hand.getWorldPosition(a);
+        refChild.getWorldPosition(b);
+        const dir = b.clone().sub(a);
+        if (dir.lengthSq() > 1e-8) {
+          this.wristEntries.push({
+            side,
+            kind: "wrist",
+            bone: hand,
+            restLocalQuat: hand.quaternion.clone(),
+            restWorldQuat: hand.getWorldQuaternion(new THREE.Quaternion()),
+            restWorldDir: dir.normalize()
+          });
+        }
+      }
+
+      // Fingers: sort each chain root->tip, map joint i to landmark (base+i -> base+i+1).
+      Object.entries(groups).forEach(([finger, bones]) => {
+        if (!bones.length) return;
+        bones.sort((x, y) => depthFrom(hand, x) - depthFrom(hand, y));
+        const base = FINGER_BASE[finger];
+        for (let i = 0; i < bones.length; i += 1) {
+          const bone = bones[i];
+          const child = bones[i + 1] || bone.children.find((node) => node.isBone);
+          if (!child) continue;
+          bone.getWorldPosition(a);
+          child.getWorldPosition(b);
+          const dir = b.clone().sub(a);
+          if (dir.lengthSq() < 1e-8) continue;
+          this.fingerEntries.push({
+            side,
+            kind: "finger",
+            from: base + i,
+            to: base + i + 1,
+            bone,
+            restLocalQuat: bone.quaternion.clone(),
+            restWorldQuat: bone.getWorldQuaternion(new THREE.Quaternion()),
+            restWorldDir: dir.normalize()
+          });
+        }
+      });
+    });
+  }
+
+  setTrackFingers(value) {
+    this.trackFingers = Boolean(value);
   }
 
   footEnd(side, out) {
@@ -303,7 +412,9 @@ export class MushyModelAvatar extends MushyAvatar {
     const bodyTracking = performance.now() - this.latestTrackedAt <= 900;
     const handTracking = this.isAnyHandActive();
     if (!bodyTracking && !handTracking && !this.isFaceActive()) {
-      this.resetModelBindPose();
+      // Paused / brief dropout (was tracked): HOLD the last pose so the character
+      // doesn't snap to a T-pose. Only fall back to bind pose on an explicit clear.
+      if (this.latestTrackedAt === 0) this.resetModelBindPose();
       return;
     }
 
@@ -371,85 +482,48 @@ export class MushyModelAvatar extends MushyAvatar {
       );
     }
 
-    if (this.headBone) {
-      this.headBone.quaternion.copy(this.head.quaternion);
-    }
+    // Head bone is left to follow the neck. (The old code copied this.head's local
+    // quaternion — built for the procedural sphere parented to root — straight onto the
+    // GLB head bone parented to the neck, which is a coordinate-space mismatch and made
+    // the head face the wrong way.)
 
     if (handTracking) {
-      this.handEntries.forEach((entry) => {
+      const driveHand = (entry, blend) => {
         const rig = this.hands[entry.side];
         if (!rig?.active) {
-          entry.bone.quaternion.slerp(entry.restLocalQuat, 0.18);
+          entry.bone.quaternion.slerp(entry.restLocalQuat, 0.2);
           return;
         }
+        const from = entry.kind === "wrist" ? WRIST_FROM : entry.from;
+        const to = entry.kind === "wrist" ? WRIST_TO : entry.to;
         const ok = aimSegment(
           entry,
-          rig.points.get(entry.from),
-          rig.points.get(entry.to),
+          rig.points.get(from),
+          rig.points.get(to),
           this._dir,
           this._delta,
           this._desired,
-          this._parentQuat
+          this._parentQuat,
+          blend
         );
-        if (!ok) entry.bone.quaternion.slerp(entry.restLocalQuat, 0.18);
-      });
+        if (!ok) entry.bone.quaternion.slerp(entry.restLocalQuat, 0.2);
+      };
+
+      // Wrist always (stable). Fingers only when opted in; otherwise relax to rest.
+      this.wristEntries.forEach((entry) => driveHand(entry, 0.5));
+      if (this.trackFingers) {
+        this.fingerEntries.forEach((entry) => driveHand(entry, 0.35));
+      } else {
+        this.fingerEntries.forEach((entry) => entry.bone.quaternion.slerp(entry.restLocalQuat, 0.25));
+      }
     }
 
     this.model.updateMatrixWorld(true);
   }
 
-  getModelWorldBox() {
-    if (!this.model) return null;
-
-    const box = new THREE.Box3();
-    box.makeEmpty();
-    this.model.updateMatrixWorld(true);
-    this.model.traverse((node) => {
-      if (!node.isMesh || !node.geometry) return;
-      if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
-      const meshBox = node.geometry.boundingBox.clone();
-      meshBox.applyMatrix4(node.matrixWorld);
-      box.union(meshBox);
-    });
-
-    if (box.isEmpty()) return null;
-    const size = box.getSize(this._b);
-    if (size.lengthSq() < 1e-4) return null;
-    return box;
-  }
-
-  boxCornerPoints(box) {
-    const { min, max } = box;
-    return [
-      new THREE.Vector3(min.x, min.y, min.z),
-      new THREE.Vector3(max.x, min.y, min.z),
-      new THREE.Vector3(min.x, max.y, min.z),
-      new THREE.Vector3(max.x, max.y, min.z),
-      new THREE.Vector3(min.x, min.y, max.z),
-      new THREE.Vector3(max.x, min.y, max.z),
-      new THREE.Vector3(min.x, max.y, max.z),
-      new THREE.Vector3(max.x, max.y, max.z)
-    ];
-  }
-
-  frameBodyCamera() {
-    if (this.framedViewport && this.modelReady && this.model) {
-      const trackingPoints = this.collectFramingPoints();
-      if (trackingPoints.length) {
-        // Landmarks span wider than the skinned mesh — tighten to match visible body size.
-        this.frameCameraToPoints(trackingPoints, { spanScale: 0.68 });
-        return;
-      }
-
-      const box = this.getModelWorldBox();
-      if (box) {
-        this.frameCameraToPoints(this.boxCornerPoints(box));
-        return;
-      }
-    }
-
-    super.frameBodyCamera();
-  }
+  // Camera framing is inherited from MushyAvatar.frameBodyCameraFixed() — a constant,
+  // jitter-free full-body frame. (The old override re-fit the noisy landmark/mesh
+  // bounding box every frame, which is what made the hero camera "zoom all over".)
 
   animateIdle(delta) {
     const live =
@@ -471,7 +545,11 @@ export class MushyModelAvatar extends MushyAvatar {
         return;
       }
 
-      this.resetModelBindPose();
+      // Not live and no idle clip: reset to bind only on an explicit clear; otherwise
+      // hold the last tracked pose so a paused video / brief dropout doesn't T-pose.
+      if (this.latestTrackedAt === 0 && this.latestFaceTrackedAt === 0) {
+        this.resetModelBindPose();
+      }
       return;
     }
 

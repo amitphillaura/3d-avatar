@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased — Rigged Model fixes & big-viewer layout
+
+### Fixed (Rigged Model panel)
+- **Camera "zoomed all over."** The hero viewport re-fit the noisy landmark bounding
+  box every frame. Replaced with a constant, deterministic full-body frame
+  (`MushyAvatar.frameBodyCameraFixed`) over the fixed Mushy coordinate space, so the
+  subject is always centered and in frame and the camera never jitters.
+- **Character left frame / T-posed when paused.** The hero avatar now **holds its last
+  pose** when tracking goes stale (paused video / brief dropout) instead of resetting to
+  bind pose; the fixed camera keeps it framed. A true bind/idle reset happens only on an
+  explicit clear (source switch / stop) via new `clearTracking()` /
+  `ModelGallery.resetTracking()` (wired into `resetDetection`).
+- **Hands "did weird stuff."** Finger bones were hardcoded to Mixamo names, so non-Mixamo
+  (Meshy) rigs never resolved. Replaced with a **rig-agnostic** hand rig
+  (`findHandBone` + `buildHandEntries`) that scans each hand bone's subtree and classifies
+  finger bones by name (works for Mixamo, Meshy, Rigify, …). Hands are **wrist-only by
+  default** (stable) with an opt-in **Track Fingers** toggle; fingers and wrist are
+  slerp-damped to stop flipping.
+- **Head faced the wrong way.** Removed a cross-coordinate-space quaternion copy onto the
+  GLB head bone; the head now follows the neck.
+- **Doubled media-button labels** (e.g. "Start Camera ▶ Start Camera"): `setMediaButtonLabel`
+  now targets the real label text node, not the indentation whitespace.
+
+### Changed (layout)
+- **Three big viewers.** Replaced the cramped 7-column analysis grid with a primary row of
+  three large players — Raw, Full Skeleton, Rigged Model — that fill the width (portrait
+  sources letterbox tall). Strict no-scroll on the wide local display; stacks + scrolls below.
+- **Anatomical diagnostics.** Body/Head/Hand previews are arranged like a body (head on top,
+  body center, hands flanking) in a compact lower deck. Landmark tables moved into
+  **toggle on/off popups** (per-part **Data** buttons, Escape to close) to free space.
+- Removed now-dead camera/box helpers (`collectFramingPoints`, `frameCameraToPoints`,
+  `getModelWorldBox`, `boxCornerPoints`) and dead `.analysis-grid` / `.table-card` CSS.
+
 ## Unreleased — review fixes & media improvements
 
 ### Current UI handoff

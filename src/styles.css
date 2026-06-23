@@ -286,54 +286,194 @@ input[type="file"]:focus-visible {
 
 .dashboard {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) minmax(150px, 0.65fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-.analysis-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
-  min-height: 0;
-}
+/* ── Primary row: 3 big viewers (Raw / Full Skeleton / Rigged Model) ── */
 
-.analysis-column {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.primary-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
   min-width: 0;
   min-height: 0;
 }
 
-.analysis-column--viz-only {
-  min-height: 0;
-}
-
-.analysis-column--viz-only .viz-card {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.analysis-column:not(.analysis-column--viz-only) .viz-card {
-  flex: 0 0 auto;
-}
-
-.analysis-column:not(.analysis-column--viz-only) .table-card {
-  flex: 1 1 0;
-  min-height: 110px;
-}
-
-.analysis-column .viz-card {
+.primary-row .viz-card {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
   min-height: 0;
 }
 
-.analysis-column .viz-card.viz-card--raw {
+.primary-row .viz-card--raw {
   grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
+/* Big players fill their cell; their content letterboxes inside. */
+.primary-row .tile-player {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── Lower deck: anatomical diagnostics + model/export dock ── */
+
+.lower-deck {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.8fr) minmax(0, 2fr);
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  max-height: clamp(220px, 32vh, 360px);
+}
+
+/* Diagnostics laid out like a body: head on top, body in the middle, hands flanking. */
+.diag-anatomy {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    ".     head   ."
+    "lhand body  rhand";
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  align-content: start;
+}
+
+.diag-tile--head {
+  grid-area: head;
+}
+.diag-tile--body {
+  grid-area: body;
+}
+.diag-tile--lhand {
+  grid-area: lhand;
+}
+.diag-tile--rhand {
+  grid-area: rhand;
+}
+
+.diag-tile {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(13, 16, 22, 0.92);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.diag-tile .tile-player {
+  width: 100%;
+  height: clamp(80px, 12vh, 150px);
+  min-height: 0;
+  background: #020306;
+}
+
+.diag-tile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(41, 48, 61, 0.72);
+}
+
+.diag-tile-header h3 {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diag-data-btn {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 9px;
+  font-size: 10px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #0a0e14;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.diag-data-btn:hover,
+.diag-data-btn.is-active {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* ── Landmark table popups (toggled per part) ── */
+
+.kp-popup {
+  position: fixed;
+  z-index: 60;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(460px, 92vw);
+  max-height: min(74vh, 680px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(8, 10, 14, 0.98);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.6);
+}
+
+.kp-popup[hidden] {
+  display: none;
+}
+
+.kp-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 11px;
+  border-bottom: 1px solid rgba(41, 48, 61, 0.72);
+}
+
+.kp-popup-header h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kp-popup-close {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #0a0e14;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.kp-popup-close:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.kp-popup .kp-table-wrap {
+  overflow: auto;
+  padding: 8px 10px;
 }
 
 .dock-row {
@@ -344,7 +484,6 @@ input[type="file"]:focus-visible {
 }
 
 .viz-card,
-.table-card,
 .dock-card {
   display: grid;
   min-width: 0;
@@ -609,8 +748,8 @@ input[type="file"]:focus-visible {
   background: linear-gradient(180deg, rgba(19, 24, 33, 0.88), rgba(13, 16, 22, 0.55));
 }
 
-/* Match Rigged Model picker header so every viz row aligns. */
-.analysis-grid .viz-card .tile-header {
+/* Match Rigged Model picker header so every viz tile in the row aligns. */
+.primary-row .viz-card .tile-header {
   --tile-header-control-height: 26px;
   min-height: calc(14px + 2px + var(--tile-header-control-height) + 0.625rem);
   box-sizing: border-box;
@@ -626,7 +765,7 @@ input[type="file"]:focus-visible {
   white-space: nowrap;
 }
 
-.analysis-grid .viz-card .tile-header h2 {
+.primary-row .viz-card .tile-header h2 {
   flex: 1;
   min-width: 0;
 }
@@ -689,16 +828,6 @@ input[type="file"]:focus-visible {
   background: #020306;
 }
 
-.analysis-grid .viz-card:not(.viz-card--raw) .tile-player,
-.analysis-grid .viz-card--raw .tile-player {
-  width: 100%;
-}
-
-.analysis-grid .viz-card:not(.viz-card--raw) .tile-player {
-  height: var(--viz-player-height, 160px);
-  flex: 0 0 auto;
-}
-
 .viz-card--raw .tile-player {
   min-height: 0;
 }
@@ -710,7 +839,7 @@ input[type="file"]:focus-visible {
 .viz-card .tile-player--3d,
 #riggedModelMount {
   min-height: 0;
-  height: var(--viz-player-height, 160px);
+  height: 100%;
 }
 
 #riggedModelMount canvas {
@@ -751,14 +880,6 @@ input[type="file"]:focus-visible {
   font-weight: 700;
 }
 
-.analysis-column .tile-player {
-  display: block;
-}
-
-.analysis-column .tile-player--portrait {
-  aspect-ratio: 3 / 4;
-}
-
 .focus-canvas {
   display: block;
   width: 100%;
@@ -779,27 +900,7 @@ input[type="file"]:focus-visible {
     #020306;
 }
 
-/* ── Tables row ── */
-
-.table-card {
-  grid-template-rows: auto minmax(0, 1fr);
-  display: grid;
-  min-height: 0;
-}
-
-.table-card-header {
-  padding: 7px 9px;
-  border-bottom: 1px solid rgba(41, 48, 61, 0.72);
-}
-
-.table-card-header h3 {
-  margin: 0;
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
+/* ── Landmark tables (rendered inside the diagnostic popups) ── */
 
 .kp-table-wrap {
   min-height: 0;
@@ -1195,15 +1296,8 @@ input[type="file"]:focus-visible {
   min-height: 0;
 }
 
-@media (max-width: 1600px) {
-  .analysis-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    grid-auto-rows: minmax(180px, auto);
-    overflow: auto;
-  }
-}
-
-@media (max-width: 1200px) {
+/* Strict no-scroll is for the wide local display; below it the deck stacks and scrolls. */
+@media (max-width: 1500px) {
   html,
   body {
     overflow: auto;
@@ -1215,6 +1309,22 @@ input[type="file"]:focus-visible {
     overflow: visible;
   }
 
+  .dashboard {
+    grid-template-rows: auto auto;
+    overflow: visible;
+  }
+
+  .primary-row {
+    grid-auto-rows: minmax(320px, 48vh);
+  }
+
+  .lower-deck {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+}
+
+@media (max-width: 1100px) {
   .workspace {
     grid-template-columns: 1fr;
     height: auto;
@@ -1226,13 +1336,8 @@ input[type="file"]:focus-visible {
     max-height: none;
   }
 
-  .dashboard {
-    grid-template-rows: auto auto;
-    overflow: visible;
-  }
-
-  .analysis-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .primary-row {
+    grid-template-columns: 1fr;
   }
 
   .dock-row {
@@ -1241,8 +1346,12 @@ input[type="file"]:focus-visible {
 }
 
 @media (max-width: 680px) {
-  .analysis-grid {
-    grid-template-columns: 1fr;
+  .diag-anatomy {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "head  head"
+      "body  body"
+      "lhand rhand";
   }
 
   .driver-body {

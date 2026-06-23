@@ -73,6 +73,7 @@ export class ModelGallery {
     this.mushy = null;
     this.heroAvatar = null;
     this.primaryId = "mushy";
+    this.trackFingers = false;
     this.visibilityObserver =
       "IntersectionObserver" in window
         ? new IntersectionObserver(
@@ -371,6 +372,7 @@ export class ModelGallery {
       id: slot.entry.id,
       url: modelUrl(slot.entry.file),
       rig: slot.entry.rig,
+      trackFingers: this.trackFingers,
       defaultAnimation: slot.entry.defaultAnimation || "idle",
       onAnimationsLoaded: (names, active) => {
         fillAnimationSelect(animSelect, names, active);
@@ -447,6 +449,7 @@ export class ModelGallery {
         framedViewport: true,
         url: modelUrl(slot.entry.file),
         rig: slot.entry.rig,
+        trackFingers: this.trackFingers,
         defaultAnimation: slot.entry.defaultAnimation || "idle",
         onAnimationsLoaded: (names, active) => {
           this.syncDriverAnimSelect(names, active);
@@ -547,6 +550,20 @@ export class ModelGallery {
       leftHandLandmarks: null,
       rightHandLandmarks: null
     });
+  }
+
+  // Force every avatar back to idle/bind (source switch, stop, reset) — as opposed to a
+  // paused video, where avatars HOLD their last pose.
+  resetTracking() {
+    this.heroAvatar?.clearTracking?.();
+    this.mushy?.clearTracking?.();
+    this.bodySlots.forEach((slot) => slot.avatar?.clearTracking?.());
+  }
+
+  setTrackFingers(value) {
+    this.trackFingers = Boolean(value);
+    this.heroAvatar?.setTrackFingers?.(this.trackFingers);
+    this.bodySlots.forEach((slot) => slot.avatar?.setTrackFingers?.(this.trackFingers));
   }
 
   dispose() {
