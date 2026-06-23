@@ -46,6 +46,10 @@ function modelsScanPlugin() {
 export default defineConfig({
   base: "/",
   plugins: [modelsScanPlugin()],
+  // Allow access over Tailscale (numeric IPs are allowed by default; this adds MagicDNS
+  // *.ts.net hostnames). Bound to the interface via the --host flag in the npm scripts.
+  preview: { allowedHosts: [".ts.net"] },
+  server: { allowedHosts: [".ts.net"] },
   build: {
     chunkSizeWarningLimit: 650,
     rollupOptions: {
