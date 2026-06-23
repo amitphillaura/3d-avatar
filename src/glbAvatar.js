@@ -1,6 +1,11 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OneEuro } from "./avatar.js";
+import {
+  MIXAMO_LEFT_HAND_BONES,
+  MIXAMO_RIGHT_HAND_BONES,
+  isHandTracked
+} from "./handRig.js";
 
 const LM = {
   nose: 0,
@@ -73,6 +78,36 @@ export class CharacterAvatar {
       });
     });
     this.haveSmooth = false;
+    this.handBones = [];
+    this.handTargets = {
+      left: new Map(),
+      right: new Map()
+    };
+    this.handSmooth = {
+      left: new Map(),
+      right: new Map()
+    };
+    this.handFilters = {
+      left: new Map(),
+      right: new Map()
+    };
+    this.handVisible = {
+      left: new Set(),
+      right: new Set()
+    };
+    this.latestHandTrackedAt = { left: 0, right: 0 };
+
+    ["left", "right"].forEach((side) => {
+      for (let index = 0; index < 21; index += 1) {
+        this.handTargets[side].set(index, new THREE.Vector3());
+        this.handSmooth[side].set(index, new THREE.Vector3());
+        this.handFilters[side].set(index, {
+          x: new OneEuro({ minCutoff: 2.8, beta: 0.035 }),
+          y: new OneEuro({ minCutoff: 2.8, beta: 0.035 }),
+          z: new OneEuro({ minCutoff: 1.8, beta: 0.015 })
+        });
+      }
+    });
 
     this._mapped = new THREE.Vector3();
     this._hipMid = new THREE.Vector3();
@@ -135,6 +170,7 @@ export class CharacterAvatar {
     }
     this.idleAction = null;
     this.bones = [];
+    this.handBones = [];
     this.clips = [];
     this.spine = null;
     this.spineRest = null;
@@ -211,6 +247,9 @@ export class CharacterAvatar {
           });
         });
 
+        this.registerHandBones("left", MIXAMO_LEFT_HAND_BONES);
+        this.registerHandBones("right", MIXAMO_RIGHT_HAND_BONES);
+
         this.spine = this.model.getObjectByName("mixamorigSpine");
         this.spineRest = this.spine ? this.spine.quaternion.clone() : null;
         this.neck = this.model.getObjectByName("mixamorigNeck");
@@ -221,8 +260,9 @@ export class CharacterAvatar {
         if (defaultClip) this.setAnimation(defaultClip);
 
         this.ready = this.bones.length > 0;
+        const fingerCount = this.handBones.length;
         this.metaElement.textContent = this.ready
-          ? `${this.bones.length} bones · ${this.animationNames.length} clips`
+          ? `${this.bones.length} bones · ${fingerCount} fingers · ${this.animationNames.length} clips`
           : this.animationNames.length
             ? `${this.animationNames.length} clips · no rig bones`
             : "Loaded · no animations";
@@ -236,6 +276,31 @@ export class CharacterAvatar {
         this.onAnimationsLoaded?.([], null);
       }
     );
+  }
+
+  registerHandBones(side, entries) {
+    if (!this.model) return;
+    entries.forEach(({ bone, child, from, to }) => {
+      const boneObj = this.model.getObjectByName(bone);
+      let childObj = this.model.getObjectByName(child);
+      if (boneObj && !childObj) {
+        childObj = boneObj.children.find((node) => node.isBone);
+      }
+      if (!boneObj || !childObj) return;
+      const boneWorld = new THREE.Vector3();
+      const childWorld = new THREE.Vector3();
+      boneObj.getWorldPosition(boneWorld);
+      childObj.getWorldPosition(childWorld);
+      this.handBones.push({
+        side,
+        bone: boneObj,
+        from,
+        to,
+        restLocalQuat: boneObj.quaternion.clone(),
+        restWorldQuat: boneObj.getWorldQuaternion(new THREE.Quaternion()),
+        restWorldDir: childWorld.sub(boneWorld).normalize()
+      });
+    });
   }
 
   mapLandmark(lm, out = this._mapped) {
@@ -267,8 +332,94 @@ export class CharacterAvatar {
       }
       this.haveSmooth = true;
       this.latestTrackedAt = performance.now();
-      this.metaElement.textContent = `Tracking ${visible} pts`;
     }
+  }
+
+  refreshMeta() {
+    const bodyActive = performance.now() - this.latestTrackedAt <= 900;
+    const leftActive = performance.now() - this.latestHandTrackedAt.left <= 900;
+    const rightActive = performance.now() - this.latestHandTrackedAt.right <= 900;
+    if (!bodyActive && !leftActive && !rightActive) return;
+
+    const parts = [];
+    if (bodyActive) parts.push(`${this.visibleNow?.size || 0} body pts`);
+    if (leftActive) parts.push("L hand");
+    if (rightActive) parts.push("R hand");
+    this.metaElement.textContent = `Tracking · ${parts.join(" · ")}`;
+  }
+
+  updateHands(leftHandLandmarks, rightHandLandmarks) {
+    if (!this.ready) return;
+    this.ingestHand("left", leftHandLandmarks);
+    this.ingestHand("right", rightHandLandmarks);
+  }
+
+  updateTracking({ poseLandmarks, leftHandLandmarks, rightHandLandmarks } = {}) {
+    this.updatePose(poseLandmarks);
+    this.updateHands(leftHandLandmarks, rightHandLandmarks);
+    this.refreshMeta();
+  }
+
+  ingestHand(side, landmarks) {
+    const visible = this.handVisible[side];
+    visible.clear();
+    if (!landmarks?.length || !isHandTracked(landmarks)) {
+      this.latestHandTrackedAt[side] = 0;
+      return;
+    }
+
+    landmarks.forEach((landmark, index) => {
+      if (!landmark) return;
+      this.handTargets[side].get(index).copy(this.mapLandmark(landmark));
+      visible.add(index);
+    });
+
+    this.latestHandTrackedAt[side] = performance.now();
+  }
+
+  smoothHands(delta) {
+    ["left", "right"].forEach((side) => {
+      if (performance.now() - this.latestHandTrackedAt[side] > 900) return;
+      this.handVisible[side].forEach((index) => {
+        const target = this.handTargets[side].get(index);
+        const smooth = this.handSmooth[side].get(index);
+        const filters = this.handFilters[side].get(index);
+        smooth.set(
+          filters.x.filter(target.x, delta),
+          filters.y.filter(target.y, delta),
+          filters.z.filter(target.z, delta)
+        );
+      });
+    });
+  }
+
+  retargetHands() {
+    const now = performance.now();
+    const getHand = (side, index) => this.handSmooth[side].get(index);
+
+    this.handBones.forEach(
+      ({ side, bone, from, to, restLocalQuat, restWorldQuat, restWorldDir }) => {
+        if (now - this.latestHandTrackedAt[side] > 900) {
+          bone.quaternion.slerp(restLocalQuat, 0.18);
+          return;
+        }
+        const seen = this.handVisible[side];
+        if (!seen.has(from) || !seen.has(to)) {
+          bone.quaternion.slerp(restLocalQuat, 0.18);
+          return;
+        }
+
+        this._targetDir.subVectors(getHand(side, to), getHand(side, from));
+        if (this._targetDir.lengthSq() < 1e-6) return;
+        this._targetDir.normalize();
+
+        this._delta.setFromUnitVectors(restWorldDir, this._targetDir);
+        this._desired.multiplyQuaternions(this._delta, restWorldQuat);
+        bone.parent.getWorldQuaternion(this._parentQuat);
+        this._parentQuat.invert();
+        bone.quaternion.multiplyQuaternions(this._parentQuat, this._desired);
+      }
+    );
   }
 
   smoothPose(delta) {
@@ -345,11 +496,24 @@ export class CharacterAvatar {
     this.lastFrameAt = now;
 
     const tracking = this.ready && now - this.latestTrackedAt <= 900;
+    const handTracking =
+      this.handBones.length > 0 &&
+      (now - this.latestHandTrackedAt.left <= 900 || now - this.latestHandTrackedAt.right <= 900);
+    const liveTracking = tracking || handTracking;
 
-    if (tracking) {
+    if (liveTracking) {
       if (this.idleAction?.isRunning()) this.idleAction.stop();
-      this.smoothPose(delta);
-      this.retarget();
+      if (tracking) {
+        this.smoothPose(delta);
+        this.retarget();
+      }
+      if (handTracking) {
+        this.smoothHands(delta);
+        this.retargetHands();
+      }
+      if (this.model && (handTracking || tracking)) {
+        this.model.updateMatrixWorld(true);
+      }
     } else if (this.mixer) {
       if (this.idleAction && !this.idleAction.isRunning()) this.idleAction.play();
       this.mixer.update(delta);

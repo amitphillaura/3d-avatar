@@ -377,12 +377,33 @@ export class ModelGallery {
     return this.bodySlots.find((entry) => entry.id === this.primaryId);
   }
 
-  updatePose(poseLandmarks) {
-    if (!poseLandmarks) return;
-    this.heroAvatar?.updatePose(poseLandmarks);
-    this.mushy?.updatePose(poseLandmarks);
+  updateTracking(results) {
+    if (!results) return;
+    const payload = {
+      poseLandmarks: results.poseLandmarks,
+      leftHandLandmarks: results.leftHandLandmarks,
+      rightHandLandmarks: results.rightHandLandmarks
+    };
+    const apply = (avatar) => {
+      if (!avatar) return;
+      if (avatar.updateTracking) avatar.updateTracking(payload);
+      else avatar.updatePose?.(payload.poseLandmarks);
+    };
+
+    apply(this.heroAvatar);
+
     this.bodySlots.forEach((slot) => {
-      if (slot.kind === "glb") slot.avatar?.updatePose(poseLandmarks);
+      if (slot.id === this.primaryId && this.heroAvatar) return;
+      if (slot.kind === "mushy") apply(this.mushy);
+      else if (slot.kind === "glb") apply(slot.avatar);
+    });
+  }
+
+  updatePose(poseLandmarks) {
+    this.updateTracking({
+      poseLandmarks,
+      leftHandLandmarks: null,
+      rightHandLandmarks: null
     });
   }
 

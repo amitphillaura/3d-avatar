@@ -31,7 +31,7 @@
               </select>
             </label>
 
-            <label class="field file-field">
+            <label class="field file-field" id="loadMediaField">
               <span>Load Media</span>
               <input id="videoFile" type="file" accept="image/*,video/*" />
             </label>
@@ -66,9 +66,12 @@
             </label>
           </div>
 
-          <div class="sidebar-section sidebar-section--actions">
+          <div class="sidebar-section sidebar-section--actions" id="cameraControls">
             <button id="retryCamera" type="button" class="btn btn--primary">Start Camera</button>
             <button id="restartCamera" type="button" class="btn">Restart Camera</button>
+          </div>
+
+          <div class="sidebar-section sidebar-section--actions" id="videoControls" hidden>
             <button id="playVideo" type="button" class="btn" disabled>Play / Pause</button>
             <button id="restartVideo" type="button" class="btn" disabled>Restart Video</button>
           </div>
@@ -93,116 +96,122 @@
         </aside>
 
         <div class="dashboard">
-          <section class="viz-row" aria-label="Live visualizations">
-            <article class="viz-card" aria-label="Raw camera or video feed">
-              <header class="tile-header">
-                <h2>Raw Camera / Video</h2>
-                <span class="tile-badge tile-badge--ready">Ready</span>
-              </header>
-              <div class="tile-player">
-                <canvas id="output" width="1280" height="720" aria-label="Full media output"></canvas>
+          <section class="analysis-grid" aria-label="Live visualizations and keypoint tables">
+            <article class="analysis-column analysis-column--viz-only" aria-label="Raw camera or video feed">
+              <div class="viz-card">
+                <header class="tile-header">
+                  <h2 id="rawPanelTitle">Raw Camera / Video</h2>
+                  <span class="tile-badge tile-badge--ready">Ready</span>
+                </header>
+                <div class="tile-player">
+                  <canvas id="output" width="1280" height="720" aria-label="Full media output"></canvas>
+                </div>
+                <footer class="tile-footer">
+                  <span id="frameMeta">Waiting for camera...</span>
+                  <span id="detectionState">Idle</span>
+                </footer>
               </div>
-              <footer class="tile-footer">
-                <span id="frameMeta">Waiting for camera...</span>
-                <span id="detectionState">Idle</span>
-              </footer>
             </article>
 
-            <article class="viz-card" aria-label="Rigged textured model">
-              <header class="tile-header">
-                <h2>Rigged Model (Textured)</h2>
-                <span class="tile-badge tile-badge--ready" id="riggedBadge">Ready</span>
-              </header>
-              <div class="tile-player tile-player--3d" id="riggedModelMount" aria-label="Primary rigged model"></div>
-              <footer class="tile-footer">
-                <span id="riggedModelMeta">Mushy Rig · waiting for pose</span>
-              </footer>
-            </article>
-
-            <article class="viz-card" aria-label="Whole body skeleton">
-              <header class="tile-header">
-                <h2>Skeleton (Whole Body)</h2>
-                <span class="tile-badge tile-badge--ready">Ready</span>
-              </header>
-              <div class="tile-player">
-                <canvas id="bodySkeleton" class="focus-canvas" width="420" height="280"
-                  aria-label="Body skeleton preview"></canvas>
+            <article class="analysis-column analysis-column--viz-only" aria-label="Rigged textured model">
+              <div class="viz-card">
+                <header class="tile-header">
+                  <h2>Rigged Model (Textured)</h2>
+                  <span class="tile-badge tile-badge--ready" id="riggedBadge">Ready</span>
+                </header>
+                <div class="tile-player tile-player--3d" id="riggedModelMount" aria-label="Primary rigged model"></div>
+                <footer class="tile-footer">
+                  <span id="riggedModelMeta">Mushy Rig · waiting for pose</span>
+                </footer>
               </div>
-              <footer class="tile-footer">
-                <span id="bodyTrackingMeta">Tracking inactive · 33 pts</span>
-              </footer>
             </article>
 
-            <article class="viz-card" aria-label="Head landmarks">
-              <header class="tile-header">
-                <h2>Head Landmarks</h2>
-                <span class="tile-badge tile-badge--ready">Ready</span>
-              </header>
-              <div class="tile-player">
-                <canvas id="faceSkeleton" class="focus-canvas" width="420" height="280"
-                  aria-label="Head and face mesh preview"></canvas>
+            <article class="analysis-column" aria-label="Whole body skeleton and landmarks">
+              <div class="viz-card">
+                <header class="tile-header">
+                  <h2>Skeleton (Whole Body)</h2>
+                  <span class="tile-badge tile-badge--ready">Ready</span>
+                </header>
+                <div class="tile-player">
+                  <canvas id="bodySkeleton" class="focus-canvas" width="420" height="280"
+                    aria-label="Body skeleton preview"></canvas>
+                </div>
+                <footer class="tile-footer">
+                  <span id="bodyTrackingMeta">Tracking inactive · 33 pts</span>
+                </footer>
               </div>
-              <footer class="tile-footer">
-                <span id="faceTrackingMeta">Tracking inactive · 468 pts</span>
-              </footer>
-            </article>
-
-            <article class="viz-card" aria-label="Left hand landmarks">
-              <header class="tile-header">
-                <h2>Left Hand Landmarks</h2>
-                <span class="tile-badge tile-badge--ready">Ready</span>
-              </header>
-              <div class="tile-player">
-                <canvas id="leftHandSkeleton" class="focus-canvas" width="420" height="280"
-                  aria-label="Left hand skeleton preview"></canvas>
+              <div class="table-card">
+                <header class="table-card-header">
+                  <h3>Body Landmarks</h3>
+                </header>
+                <div id="bodyTable" class="kp-table-wrap">Waiting for detection...</div>
               </div>
-              <footer class="tile-footer">
-                <span id="leftHandTrackingMeta">Tracking inactive · 21 pts</span>
-              </footer>
             </article>
 
-            <article class="viz-card" aria-label="Right hand landmarks">
-              <header class="tile-header">
-                <h2>Right Hand Landmarks</h2>
-                <span class="tile-badge tile-badge--ready">Ready</span>
-              </header>
-              <div class="tile-player">
-                <canvas id="rightHandSkeleton" class="focus-canvas" width="420" height="280"
-                  aria-label="Right hand skeleton preview"></canvas>
+            <article class="analysis-column" aria-label="Head landmarks">
+              <div class="viz-card">
+                <header class="tile-header">
+                  <h2>Head Landmarks</h2>
+                  <span class="tile-badge tile-badge--ready">Ready</span>
+                </header>
+                <div class="tile-player tile-player--portrait">
+                  <canvas id="faceSkeleton" class="focus-canvas" width="420" height="280"
+                    aria-label="Head and face mesh preview"></canvas>
+                </div>
+                <footer class="tile-footer">
+                  <span id="faceTrackingMeta">Tracking inactive · 468 pts</span>
+                </footer>
               </div>
-              <footer class="tile-footer">
-                <span id="rightHandTrackingMeta">Tracking inactive · 21 pts</span>
-              </footer>
-            </article>
-          </section>
-
-          <section class="tables-row" aria-label="Keypoint data tables">
-            <article class="table-card">
-              <header class="table-card-header">
-                <h3>Head Landmarks</h3>
-              </header>
-              <div id="faceTable" class="kp-table-wrap">Waiting for detection...</div>
+              <div class="table-card">
+                <header class="table-card-header">
+                  <h3>Head Landmarks</h3>
+                </header>
+                <div id="faceTable" class="kp-table-wrap">Waiting for detection...</div>
+              </div>
             </article>
 
-            <article class="table-card">
-              <header class="table-card-header">
-                <h3>Body Landmarks</h3>
-              </header>
-              <div id="bodyTable" class="kp-table-wrap">Waiting for detection...</div>
+            <article class="analysis-column" aria-label="Left hand landmarks">
+              <div class="viz-card">
+                <header class="tile-header">
+                  <h2>Left Hand Landmarks</h2>
+                  <span class="tile-badge tile-badge--ready">Ready</span>
+                </header>
+                <div class="tile-player">
+                  <canvas id="leftHandSkeleton" class="focus-canvas" width="420" height="280"
+                    aria-label="Left hand skeleton preview"></canvas>
+                </div>
+                <footer class="tile-footer">
+                  <span id="leftHandTrackingMeta">Tracking inactive · 21 pts</span>
+                </footer>
+              </div>
+              <div class="table-card">
+                <header class="table-card-header">
+                  <h3>Left Hand Landmarks</h3>
+                </header>
+                <div id="leftHandTable" class="kp-table-wrap">Waiting for detection...</div>
+              </div>
             </article>
 
-            <article class="table-card">
-              <header class="table-card-header">
-                <h3>Left Hand Landmarks</h3>
-              </header>
-              <div id="leftHandTable" class="kp-table-wrap">Waiting for detection...</div>
-            </article>
-
-            <article class="table-card">
-              <header class="table-card-header">
-                <h3>Right Hand Landmarks</h3>
-              </header>
-              <div id="rightHandTable" class="kp-table-wrap">Waiting for detection...</div>
+            <article class="analysis-column" aria-label="Right hand landmarks">
+              <div class="viz-card">
+                <header class="tile-header">
+                  <h2>Right Hand Landmarks</h2>
+                  <span class="tile-badge tile-badge--ready">Ready</span>
+                </header>
+                <div class="tile-player">
+                  <canvas id="rightHandSkeleton" class="focus-canvas" width="420" height="280"
+                    aria-label="Right hand skeleton preview"></canvas>
+                </div>
+                <footer class="tile-footer">
+                  <span id="rightHandTrackingMeta">Tracking inactive · 21 pts</span>
+                </footer>
+              </div>
+              <div class="table-card">
+                <header class="table-card-header">
+                  <h3>Right Hand Landmarks</h3>
+                </header>
+                <div id="rightHandTable" class="kp-table-wrap">Waiting for detection...</div>
+              </div>
             </article>
           </section>
 

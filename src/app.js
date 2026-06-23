@@ -13,6 +13,10 @@ const canvasElement = document.getElementById("output");
 const canvasCtx = canvasElement.getContext("2d", { alpha: true });
 const statusEl = document.getElementById("status");
 const sourceSelect = document.getElementById("source");
+const loadMediaFieldEl = document.getElementById("loadMediaField");
+const cameraControlsEl = document.getElementById("cameraControls");
+const videoControlsEl = document.getElementById("videoControls");
+const rawPanelTitleEl = document.getElementById("rawPanelTitle");
 const videoFileInput = document.getElementById("videoFile");
 const modeSelect = document.getElementById("mode");
 const visualStyleSelect = document.getElementById("visualStyle");
@@ -72,6 +76,8 @@ let imageLoaded = false;
 let currentImageName = "";
 let currentMediaRect = null;
 let lastExportAt = null;
+let lastSourceAspect = 16 / 9;
+let skeletonResizeObserver = null;
 
 const BODY_GLOW_PATHS = [
   [15, 13, 11, 12, 14, 16],
@@ -143,15 +149,117 @@ function getSourceLabel() {
   return "webcam feed";
 }
 
+function getRawPanelTitle() {
+  if (sourceSelect.value === "video") return "Raw Video File";
+  if (sourceSelect.value === "image") return "Raw Photo / Image";
+  return "Raw Webcam";
+}
+
+function getRawPlaceholderMessage() {
+  if (sourceSelect.value === "video") {
+    return videoLoaded ? "Press Play / Pause to track" : "Load a video file to begin";
+  }
+  if (sourceSelect.value === "image") {
+    return imageLoaded ? "Tracking still image" : "Load a photo or image to begin";
+  }
+  return cameraInstance ? "Webcam live" : "Click Start Camera to begin";
+}
+
+function syncSourceUI() {
+  const source = sourceSelect.value;
+  const isCamera = source === "camera";
+  const isVideo = source === "video";
+  const isImage = source === "image";
+
+  if (rawPanelTitleEl) rawPanelTitleEl.textContent = getRawPanelTitle();
+  if (loadMediaFieldEl) loadMediaFieldEl.hidden = isCamera;
+  if (cameraControlsEl) cameraControlsEl.hidden = !isCamera;
+  if (videoControlsEl) videoControlsEl.hidden = !isVideo;
+  if (loopVideoToggle?.closest(".toggle-field")) {
+    loopVideoToggle.closest(".toggle-field").hidden = !isVideo;
+  }
+  if (videoFileInput) {
+    videoFileInput.accept = isImage ? "image/*" : isVideo ? "video/*" : "image/*,video/*";
+  }
+
+  if (isCamera) {
+    retryButton.disabled = false;
+    retryButton.textContent = cameraInstance ? "Stop Camera" : "Start Camera";
+    if (restartCameraButton) restartCameraButton.disabled = !cameraInstance;
+  } else {
+    retryButton.disabled = true;
+    retryButton.textContent = "Start Camera";
+    if (restartCameraButton) restartCameraButton.disabled = true;
+  }
+
+  if (isVideo) {
+    playVideoButton.disabled = !videoLoaded;
+    restartVideoButton.disabled = !videoLoaded;
+  } else {
+    playVideoButton.disabled = true;
+    restartVideoButton.disabled = true;
+  }
+}
+
+function refreshRawPanel() {
+  if (getFrameSource()) {
+    processCurrentFrame();
+    return;
+  }
+
+  initCanvasPlaceholder(getRawPlaceholderMessage());
+  if (sourceSelect.value === "camera") {
+    frameMetaEl.textContent = cameraInstance ? "Camera active" : "Camera idle";
+    setDetectionState(cameraInstance ? "Searching" : "Idle");
+  } else if (sourceSelect.value === "video") {
+    frameMetaEl.textContent = videoLoaded ? "Video loaded · paused" : "Waiting for video file...";
+    setDetectionState("Idle");
+  } else {
+    frameMetaEl.textContent = imageLoaded
+      ? `${imageElement.naturalWidth || 0} x ${imageElement.naturalHeight || 0} image file`
+      : "Waiting for image file...";
+    setDetectionState("Idle");
+  }
+}
+
 function resizeCanvasToDisplay(canvas) {
-  const rect = canvas.getBoundingClientRect();
-  const width = Math.max(1, Math.round(rect.width || canvas.clientWidth || canvas.width));
-  const height = Math.max(1, Math.round(rect.height || canvas.clientHeight || canvas.height));
+  const parent = canvas.parentElement;
+  const width = Math.max(
+    1,
+    Math.round(parent?.clientWidth || canvas.getBoundingClientRect().width || canvas.clientWidth || canvas.width)
+  );
+  const height = Math.max(
+    1,
+    Math.round(parent?.clientHeight || canvas.getBoundingClientRect().height || canvas.clientHeight || canvas.height)
+  );
 
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
   }
+
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+}
+
+function getAspectDrawRect(canvasWidth, canvasHeight, aspect) {
+  return containRect(aspect, 1, canvasWidth, canvasHeight);
+}
+
+function createLandmarkProjector(points, drawRect, pad = 16, aspect = 1) {
+  const innerProject = fitLandmarks(points, drawRect.width, drawRect.height, pad, aspect);
+  return (landmark) => {
+    const point = innerProject(landmark);
+    return { x: drawRect.x + point.x, y: drawRect.y + point.y };
+  };
+}
+
+function paintSkeletonBackdrop(ctx, canvas, drawRect) {
+  ctx.fillStyle = "#020306";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(drawRect.x + 0.5, drawRect.y + 0.5, drawRect.width - 1, drawRect.height - 1);
 }
 
 function resizeOutputCanvasToDisplay() {
@@ -493,21 +601,49 @@ const SKELETON_BONES = [
   [23, 25], [25, 27], [24, 26], [26, 28]
 ];
 
-function fitLandmarks(points, width, height, pad) {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+function getSourceAspectRatio() {
+  const source = getFrameSource();
+  if (source) {
+    const { width, height } = getFrameDimensions(source);
+    if (width > 0 && height > 0) {
+      lastSourceAspect = width / height;
+      return lastSourceAspect;
+    }
+  }
+  if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+    lastSourceAspect = videoElement.videoWidth / videoElement.videoHeight;
+    return lastSourceAspect;
+  }
+  if (imageElement.naturalWidth > 0 && imageElement.naturalHeight > 0) {
+    lastSourceAspect = imageElement.naturalWidth / imageElement.naturalHeight;
+    return lastSourceAspect;
+  }
+  return lastSourceAspect;
+}
+
+function fitLandmarks(points, width, height, pad, aspect = 1) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
   points.forEach((p) => {
     if (!p) return;
-    if (p.x < minX) minX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y > maxY) maxY = p.y;
+    const px = p.x * aspect;
+    const py = p.y;
+    if (px < minX) minX = px;
+    if (py < minY) minY = py;
+    if (px > maxX) maxX = px;
+    if (py > maxY) maxY = py;
   });
   const spanX = Math.max(maxX - minX, 1e-3);
   const spanY = Math.max(maxY - minY, 1e-3);
   const scale = Math.min((width - pad * 2) / spanX, (height - pad * 2) / spanY);
   const offX = (width - spanX * scale) / 2;
   const offY = (height - spanY * scale) / 2;
-  return (p) => ({ x: offX + (p.x - minX) * scale, y: offY + (p.y - minY) * scale });
+  return (p) => ({
+    x: offX + (p.x * aspect - minX) * scale,
+    y: offY + (p.y - minY) * scale
+  });
 }
 
 function clearSkeleton(ctx, canvas, message) {
@@ -528,8 +664,11 @@ function drawBodySkeleton() {
     clearSkeleton(ctx, canvas, "No body");
     return;
   }
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const project = fitLandmarks(lm, canvas.width, canvas.height, 24);
+
+  const aspect = getSourceAspectRatio();
+  const drawRect = getAspectDrawRect(canvas.width, canvas.height, aspect);
+  paintSkeletonBackdrop(ctx, canvas, drawRect);
+  const project = createLandmarkProjector(lm, drawRect, 24, aspect);
 
   ctx.strokeStyle = "#00f0a8";
   ctx.lineWidth = 3;
@@ -563,8 +702,11 @@ function drawFaceSkeleton() {
     clearSkeleton(ctx, canvas, "No face");
     return;
   }
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const project = fitLandmarks(face, canvas.width, canvas.height, 24);
+
+  const aspect = getSourceAspectRatio();
+  const drawRect = getAspectDrawRect(canvas.width, canvas.height, aspect);
+  paintSkeletonBackdrop(ctx, canvas, drawRect);
+  const project = createLandmarkProjector(face, drawRect, 20, aspect);
 
   ctx.fillStyle = "rgba(89,166,255,0.85)";
   face.forEach((point) => {
@@ -606,8 +748,11 @@ function drawSingleHandSkeleton(ctx, canvas, landmarks, message, color) {
     clearSkeleton(ctx, canvas, message);
     return;
   }
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const project = fitLandmarks(landmarks, canvas.width, canvas.height, 28);
+
+  const aspect = getSourceAspectRatio();
+  const drawRect = getAspectDrawRect(canvas.width, canvas.height, aspect);
+  paintSkeletonBackdrop(ctx, canvas, drawRect);
+  const project = createLandmarkProjector(landmarks, drawRect, 24, aspect);
   drawHandSet(ctx, project, landmarks, color);
 }
 
@@ -753,13 +898,48 @@ function drawResults(image) {
     });
   }
 
+  const showHands =
+    showOverlay &&
+    (mode === "body" ||
+      mode === "both" ||
+      latestResults?.leftHandLandmarks?.length ||
+      latestResults?.rightHandLandmarks?.length);
+
+  if (showHands) {
+    drawHandOverlay(latestResults?.leftHandLandmarks, "#ff7bd5");
+    drawHandOverlay(latestResults?.rightHandLandmarks, "#59a6ff");
+  }
+
   canvasCtx.restore();
 }
 
+function drawHandOverlay(landmarks, color) {
+  if (!landmarks?.length || !window.HAND_CONNECTIONS) return;
+  const projected = projectLandmarksToCanvas(landmarks);
+  window.drawConnectors(canvasCtx, projected, window.HAND_CONNECTIONS, {
+    color,
+    lineWidth: 2.5
+  });
+  window.drawLandmarks(canvasCtx, projected, {
+    color: "#ffffff",
+    lineWidth: 1,
+    radius: 2.5
+  });
+}
+
 function getFrameSource() {
-  if (sourceSelect.value === "image") return imageLoaded ? imageElement : null;
-  if (sourceSelect.value === "camera" && !cameraInstance) return null;
-  return videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA ? videoElement : null;
+  if (sourceSelect.value === "image") {
+    return imageLoaded ? imageElement : null;
+  }
+  if (sourceSelect.value === "camera") {
+    if (!cameraInstance) return null;
+    return videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA ? videoElement : null;
+  }
+  if (sourceSelect.value === "video") {
+    if (!videoLoaded) return null;
+    return videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA ? videoElement : null;
+  }
+  return null;
 }
 
 function getFrameDimensions(source) {
@@ -786,10 +966,11 @@ async function processCurrentFrame() {
   frameTick += 1;
   try {
     await holistic.send({ image: frameSource });
-    modelGallery?.updatePose(latestResults?.poseLandmarks);
+    const { width, height } = getFrameDimensions(frameSource);
+    if (width > 0 && height > 0) lastSourceAspect = width / height;
+    modelGallery?.updateTracking(latestResults);
     drawResults(frameSource);
     updateKeypointsPanel();
-    const { width, height } = getFrameDimensions(frameSource);
     frameMetaEl.textContent = `${width} x ${height} ${getSourceLabel()}`;
   } catch (error) {
     console.warn("Frame processing error:", error);
@@ -914,20 +1095,12 @@ function stopCamera() {
   videoElement.srcObject = null;
 }
 
-function syncCameraButton() {
-  retryButton.textContent = cameraInstance ? "Stop Camera" : "Start Camera";
-  retryButton.disabled = false;
-  if (restartCameraButton) restartCameraButton.disabled = !cameraInstance;
-}
-
 function stopCameraAndIdle(message = "Camera stopped.") {
   stopCamera();
-  syncCameraButton();
+  syncSourceUI();
   if (sourceSelect.value === "camera") {
-    initCanvasPlaceholder("Click Start Camera to begin");
+    refreshRawPanel();
     setStatus(message, "warning");
-    frameMetaEl.textContent = "Camera idle";
-    setDetectionState("Idle");
   }
 }
 
@@ -956,6 +1129,7 @@ async function restartCamera() {
 async function startCamera() {
   cancelAutoCameraStart();
   sourceSelect.value = "camera";
+  syncSourceUI();
   cancelVideoLoop();
   cancelCameraLoop();
   videoElement.pause();
@@ -967,10 +1141,8 @@ async function startCamera() {
   videoElement.removeAttribute("src");
   videoElement.load();
   videoLoaded = false;
-  playVideoButton.disabled = true;
-  restartVideoButton.disabled = true;
-  retryButton.disabled = false;
   retryButton.textContent = "Requesting...";
+  refreshRawPanel();
 
   try {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -998,8 +1170,8 @@ async function startCamera() {
 
     cameraInstance = { stream };
     setStatus("Camera active. Move back for full body, closer for face detail.");
-    frameMetaEl.textContent = "Camera active";
-    syncCameraButton();
+    syncSourceUI();
+    refreshRawPanel();
     scheduleCameraLoop();
   } catch (error) {
     stopCamera();
@@ -1010,7 +1182,7 @@ async function startCamera() {
     );
     frameMetaEl.textContent = "Camera unavailable";
     setDetectionState("Blocked");
-    syncCameraButton();
+    syncSourceUI();
   }
 }
 
@@ -1060,8 +1232,7 @@ function prepareMediaMode(kind) {
   stopVideoPlayback();
   resetDetection();
   sourceSelect.value = kind;
-  retryButton.disabled = true;
-  retryButton.textContent = "Start Camera";
+  syncSourceUI();
 }
 
 function loadVideoFile(file) {
@@ -1080,11 +1251,10 @@ function loadVideoFile(file) {
   videoElement.load();
 
   videoLoaded = false;
-  playVideoButton.disabled = true;
-  restartVideoButton.disabled = true;
-  retryButton.disabled = true;
   frameMetaEl.textContent = `Loading ${file.name}...`;
   setStatus(`Loading video: ${file.name}`, "warning");
+  syncSourceUI();
+  refreshRawPanel();
 }
 
 function loadImageFile(file) {
@@ -1100,20 +1270,21 @@ function loadImageFile(file) {
   imageObjectUrl = URL.createObjectURL(file);
   imageLoaded = false;
   currentImageName = file.name;
-  playVideoButton.disabled = true;
-  restartVideoButton.disabled = true;
   frameMetaEl.textContent = `Loading ${file.name}...`;
   setStatus(`Loading image: ${file.name}`, "warning");
+  syncSourceUI();
   imageElement.src = imageObjectUrl;
 }
 
 function loadMediaFile(file) {
   if (!file) return;
   if (file.type.startsWith("image/")) {
+    sourceSelect.value = "image";
     loadImageFile(file);
     return;
   }
   if (file.type.startsWith("video/")) {
+    sourceSelect.value = "video";
     loadVideoFile(file);
     return;
   }
@@ -1123,41 +1294,41 @@ function loadMediaFile(file) {
 function switchSource(nextSource) {
   cancelAutoCameraStart();
   resetDetection();
+  sourceSelect.value = nextSource;
+  syncSourceUI();
 
   if (nextSource === "camera") {
     stopVideoPlayback();
-    retryButton.disabled = false;
-    retryButton.textContent = cameraInstance ? "Stop Camera" : "Start Camera";
-    initCanvasPlaceholder("Click Start Camera to begin");
-    setStatus("Camera mode ready. Click Start Camera when you want to grant camera access.", "warning");
-    frameMetaEl.textContent = "Camera idle";
+    if (!cameraInstance) {
+      refreshRawPanel();
+      setStatus("Camera mode ready. Click Start Camera when you want to grant camera access.", "warning");
+      return;
+    }
+    refreshRawPanel();
+    setStatus("Camera active. Move back for full body, closer for face detail.");
     return;
   }
 
   stopCamera();
   stopVideoPlayback();
-  retryButton.disabled = true;
-  retryButton.textContent = "Start Camera";
 
   if (nextSource === "image") {
     if (!imageLoaded) {
-      initCanvasPlaceholder("Load an image file to begin");
+      refreshRawPanel();
       setStatus("Image mode ready. Choose a photo or image file to track.", "warning");
-      frameMetaEl.textContent = "Waiting for image file...";
     } else {
       setStatus(`Image loaded: ${currentImageName || "photo"}.`);
-      processCurrentFrame();
+      refreshRawPanel();
     }
     return;
   }
 
   if (!videoLoaded) {
-    initCanvasPlaceholder("Load a video file to begin");
+    refreshRawPanel();
     setStatus("Video mode ready. Choose a video file to track.", "warning");
-    frameMetaEl.textContent = "Waiting for video file...";
   } else {
-    setStatus("Video mode ready. Press Play Video to track this file.");
-    processCurrentFrame();
+    setStatus("Video mode ready. Press Play / Pause to track this file.");
+    refreshRawPanel();
   }
 }
 
@@ -1222,11 +1393,8 @@ function bindEvents() {
     if (sourceSelect.value !== "video") return;
 
     videoLoaded = true;
-    playVideoButton.disabled = false;
-    restartVideoButton.disabled = false;
-    playVideoButton.textContent = "Play / Pause";
+    syncSourceUI();
     setStatus("Video loaded. Press Play / Pause to start tracking.");
-    frameMetaEl.textContent = `${videoElement.videoWidth || 0} x ${videoElement.videoHeight || 0} video file`;
     await processCurrentFrame();
   });
 
@@ -1235,15 +1403,13 @@ function bindEvents() {
 
     cancelVideoLoop();
     videoLoaded = false;
-    playVideoButton.disabled = true;
-    restartVideoButton.disabled = true;
-    playVideoButton.textContent = "Play / Pause";
+    syncSourceUI();
     const error = videoElement.error;
     setStatus(
       `Video error: ${error?.message || "could not load or decode this file"}. Try another video format.`,
       "danger"
     );
-    frameMetaEl.textContent = "Video unavailable";
+    refreshRawPanel();
     setDetectionState("Blocked");
   });
 
@@ -1301,10 +1467,8 @@ function bindEvents() {
     if (sourceSelect.value !== "image") return;
 
     imageLoaded = true;
-    playVideoButton.disabled = true;
-    restartVideoButton.disabled = true;
+    syncSourceUI();
     setStatus(`Image loaded: ${currentImageName || "photo"}. Tracking still landmarks.`);
-    frameMetaEl.textContent = `${imageElement.naturalWidth || 0} x ${imageElement.naturalHeight || 0} image file`;
     await processCurrentFrame();
   });
 
@@ -1312,8 +1476,9 @@ function bindEvents() {
     if (sourceSelect.value !== "image") return;
 
     imageLoaded = false;
+    syncSourceUI();
     setStatus("Image error: could not load this file. Try another image.", "danger");
-    frameMetaEl.textContent = "Image unavailable";
+    refreshRawPanel();
     setDetectionState("Blocked");
   });
 }
@@ -1384,23 +1549,30 @@ function loadImageURL(url, name = "image") {
 
 function init() {
   bindEvents();
-  initCanvasPlaceholder();
+  syncSourceUI();
+  refreshRawPanel();
   const stageResizeObserver = new ResizeObserver(() => {
     if (getFrameSource()) {
       processCurrentFrame();
     } else {
-      initCanvasPlaceholder(
-        sourceSelect.value === "camera" ? "Click Start Camera to begin" : "Load media to begin"
-      );
+      refreshRawPanel();
     }
   });
   stageResizeObserver.observe(canvasElement);
+  if (skeletonResizeObserver) skeletonResizeObserver.disconnect();
+  skeletonResizeObserver = new ResizeObserver(() => {
+    if (latestResults) updateKeypointsPanel();
+  });
+  [bodySkeletonCanvas, faceSkeletonCanvas, leftHandSkeletonCanvas, rightHandSkeletonCanvas].forEach(
+    (canvas) => skeletonResizeObserver.observe(canvas)
+  );
   window.__loadVideoURL = loadVideoURL;
   window.__loadImageURL = loadImageURL;
   window.__playVideo = playLoadedVideo;
   window.__processFrame = processCurrentFrame;
   window.__video = videoElement;
   window.__image = imageElement;
+  window.__switchSource = switchSource;
 
   if (!window.isSecureContext && window.location.hostname !== "localhost") {
     setStatus("Webcam access needs HTTPS or localhost. Start this app with npm run dev.", "danger");
@@ -1421,10 +1593,8 @@ function init() {
       setStatus("Model gallery failed to load. Check public/models/registry.json.", "danger");
     })
     .finally(() => {
-      retryButton.disabled = false;
-      retryButton.textContent = "Start Camera";
-      if (restartCameraButton) restartCameraButton.disabled = true;
-      frameMetaEl.textContent = "Camera idle";
+      syncSourceUI();
+      refreshRawPanel();
       setModelsLoaded(true);
       setStatus("Ready. Click Start Camera or load an image/video file to begin.", "success");
     });

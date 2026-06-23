@@ -286,24 +286,35 @@ input[type="file"]:focus-visible {
 
 .dashboard {
   display: grid;
-  grid-template-rows: minmax(0, 1.15fr) minmax(130px, 0.55fr) minmax(150px, 0.65fr);
+  grid-template-rows: minmax(0, 1fr) minmax(150px, 0.65fr);
   gap: 10px;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-.viz-row {
+.analysis-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   min-height: 0;
 }
 
-.tables-row {
+.analysis-column {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1.15fr) minmax(110px, 0.55fr);
   gap: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.analysis-column--viz-only {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.analysis-column .viz-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
 }
 
@@ -428,19 +439,31 @@ input[type="file"]:focus-visible {
   font-weight: 700;
 }
 
-.focus-canvas,
+.analysis-column .tile-player {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.analysis-column .tile-player--portrait {
+  aspect-ratio: 3 / 4;
+}
+
+.focus-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: transparent;
+}
+
 #output {
   display: block;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
-  background:
-    radial-gradient(circle at 50% 42%, rgba(89, 166, 255, 0.08), transparent 42%),
-    #020306;
-}
-
-#output {
   background:
     linear-gradient(135deg, rgba(0, 240, 168, 0.06), transparent 38%),
     #020306;
@@ -450,6 +473,8 @@ input[type="file"]:focus-visible {
 
 .table-card {
   grid-template-rows: auto minmax(0, 1fr);
+  display: grid;
+  min-height: 0;
 }
 
 .table-card-header {
@@ -846,10 +871,15 @@ input[type="file"]:focus-visible {
 
 /* ── Responsive ── */
 
+.field[hidden],
+.sidebar-section[hidden] {
+  display: none !important;
+}
+
 @media (max-width: 1600px) {
-  .viz-row {
+  .analysis-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-auto-rows: minmax(140px, 1fr);
+    grid-auto-rows: minmax(180px, auto);
     overflow: auto;
   }
 }
@@ -878,15 +908,11 @@ input[type="file"]:focus-visible {
   }
 
   .dashboard {
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto;
     overflow: visible;
   }
 
-  .viz-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .tables-row {
+  .analysis-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -896,8 +922,7 @@ input[type="file"]:focus-visible {
 }
 
 @media (max-width: 680px) {
-  .viz-row,
-  .tables-row {
+  .analysis-grid {
     grid-template-columns: 1fr;
   }
 
