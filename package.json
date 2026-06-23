@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "models:scan": "node scripts/scan-body-models.js",
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 5180",
@@ -16,6 +17,7 @@
   "dependencies": {
     "@mediapipe/drawing_utils": "^0.3.1675466124",
     "@mediapipe/holistic": "^0.5.1675471629",
+    "kalidokit": "^1.1.5",
     "three": "^0.184.0"
   },
   "devDependencies": {

@@ -1,13 +1,23 @@
-# Body models
+# Body models (Meshy exports go here)
 
-Drop rigged **GLB** exports here. Register each file in `../registry.json`.
+**Folder:** `public/models/body/`
 
-## Meshy export checklist
+Drop any number of rigged **GLB** files here. Each `.glb` is picked up automatically — no fixed slot limit.
 
-1. Rig the character in Meshy (A-pose or T-pose).
-2. Add animations from the library.
-3. Download **Animation → All Added → Single File** as **GLB**.
-4. Rename to match `registry.json` (e.g. `meshy-01.glb`).
-5. Refresh the app — the card should show **Ready** and list animation clips.
+1. Export from Meshy: **Animation → All Added → Single File** as **GLB**.
+2. Save with any filename (e.g. `violet-vanguard.glb`, `meshy-03.glb`).
+3. In the app, click **Refresh Models** (sidebar) or reload.
 
-Default bone map expects **Mixamo-style** names (`mixamorigLeftArm`, etc.). Meshy rigs may need a custom `rig` entry later.
+Optional: customize display name, rig type, or default animation in `../registry.json` under `bodyOverrides`, keyed by filename:
+
+```json
+"bodyOverrides": {
+  "my-character.glb": {
+    "name": "My Character",
+    "rig": "meshy",
+    "defaultAnimation": "Armature|walking_man|baselayer"
+  }
+}
+```
+
+Use `rig: "meshy"` for Meshy bipeds (`LeftArm`, `Hips`, …). Use `rig: "mixamo"` only if the skeleton uses Mixamo names.

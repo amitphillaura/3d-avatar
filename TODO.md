@@ -1,24 +1,46 @@
 # TODO
 
-## ✅ Done
+## ✅ Done (recent session)
 
-- 3D Character orientation calibration (`CAL`: `sx: 1, sy: -1, sz: -0.4, swapLR: false`)
-- Body model gallery + `public/models/registry.json` + gitignored `body/` / `face/` drop folders
-- Local-only production (`npm run start` on :5180); GitHub is code + CI only
-- Opt-in camera start (no automatic permission request on page load)
-- Media picker supports still images (`image/*`) plus videos (`video/*`)
-- Four-column 3440×1440 analysis grid with equal Raw/Head/Body/Hands player tiles,
-  in-column tables, in-column model cards, Start/Stop Camera, and video loop toggle
+- **Mushy-driven GLB hero** — `MushyModelAvatar` replaces `CharacterAvatar` on hero + body
+  gallery cards; pose = same `this.points` as Mushy cylinders (`aimSegment` on bones).
+- **Shared pose mapping** — `poseSkeleton.js` + `skeletonGraph.js`; no separate CAL for hero.
+- **Full Skeleton pane** — combined body, neck bridge, feet, face, hands in column 2.
+- **Feet in rig** — heel/toe landmarks (29–32) in skeleton graph + Mushy foot segments.
+- **Analysis grid layout** — 7-column top row, sidebar controls, bottom model dock.
+- **Panel alignment** — `--viz-player-height` sync; unified tile header min-height (Rigged
+  Model picker height).
+- **Hero 3D viewport** — letterbox to `--viz-aspect`; `frameBodyCamera` / `frameCameraToPoints`.
+- **Idle model fix** — no auto-play Meshy walk clip on load; bind pose until track or user anim.
+- **Model vertical fit** — `fitModelToSkeleton()` aligns hips to `MUSHY_HIP_Y`.
+- **Video frame scrubber** — FRAME slider (30 fps), preview while dragging, play on release.
+- **Body model scan** — `scripts/scan-body-models.js` + vite plugin → `body/manifest.json`.
+- **Registry bodyOverrides** — metadata for Meshy filenames without listing every slot.
 
-## Open (next UX / media)
+## Open — rig / retarget
 
-- **Visual target pass** — user supplied `/Users/amit/Downloads/504C8BFC-24F6-4935-B95B-32928B2D465D.PNG`
-  as desired UI reference, but the current agent could not inspect images. Next image-capable
-  agent should compare against that screenshot and refine the grid.
-- **Play video / Photos library** — broaden real-file compatibility testing across user camera exports.
-- **Face retargeting** — face row currently static GLB preview only.
+- **Rigged zoom polish** — hero camera uses `spanScale: 0.68` on landmarks; may need per-model
+  tuning so GLB fill matches Full Skeleton on all poses. Test Violet Vanguard + Gray Bodysuit.
+- **Hands on GLB** — Mushy hand cylinders drive; finger bones mapped for Mixamo, verify Meshy exports.
+- **Head/neck on GLB** — neck aims shoulder-mid → Mushy head; head bone copies Mushy head quat.
+- **Archive `glbAvatar.js`** — dead code in runtime bundle; delete or move to `archive/` when safe.
 
-## Open (models)
+## Open — UX / media
 
-- **Meshy bone mapping** — confirm Meshy rig bone names; extend `glbAvatar.js` if not Mixamo.
-- **Face model slot** — wire face landmarks to a head rig when exports are ready.
+- **Visual target pass** — user reference screenshot at
+  `/Users/amit/Downloads/504C8BFC-24F6-4935-B95B-32928B2D465D.PNG` (not yet fully matched).
+- **Play video / Photos library** — broader codec/container testing on user exports.
+- **Scrub while paused** — optional: release scrub without auto-play (user preference TBD).
+- **Keyboard shortcuts** — space = play/pause, arrow keys = step frames (nice-to-have).
+
+## Open — models
+
+- **Face retargeting** — face row still static GLB preview; wire `faceRig.js` to a head model.
+- **Face model slot** — `public/models/face/` GLBs when rigged exports exist.
+- **Meshy bone naming** — `MESHY_BONE_MAP` in `mixamoRig.js`; confirm on each new export.
+
+## Known constraints
+
+- Production is **local only** (http://127.0.0.1:5180/); no GitHub Pages deploy.
+- User GLBs under `body/` and `face/` are gitignored — not in repo.
+- MediaPipe Holistic is vendored under `public/mediapipe/` — do not remove without replacement.

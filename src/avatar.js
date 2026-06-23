@@ -1,21 +1,9 @@
 import * as THREE from "three";
-import { HAND_CONNECTIONS } from "./handRig.js";
+import { HAND_CONNECTIONS, resolveFingerSegment } from "./handRig.js";
+import { FACE_HEAD_KEYS, FACE_HEAD_LANDMARKS, solveFaceRig } from "./faceRig.js";
+import { mapHandLandmark as mapHandPoint, mapPoseLandmark, POSE_LM } from "./poseSkeleton.js";
 
-const BODY_POINTS = {
-  nose: 0,
-  leftShoulder: 11,
-  rightShoulder: 12,
-  leftElbow: 13,
-  rightElbow: 14,
-  leftWrist: 15,
-  rightWrist: 16,
-  leftHip: 23,
-  rightHip: 24,
-  leftKnee: 25,
-  rightKnee: 26,
-  leftAnkle: 27,
-  rightAnkle: 28
-};
+const BODY_POINTS = POSE_LM;
 
 const BONES = [
   ["leftShoulder", "rightShoulder", "collar"],
@@ -26,8 +14,12 @@ const BONES = [
   ["rightElbow", "rightWrist", "arm"],
   ["leftHip", "leftKnee", "leg"],
   ["leftKnee", "leftAnkle", "leg"],
+  ["leftAnkle", "leftHeel", "leg"],
+  ["leftHeel", "leftFootIndex", "leg"],
   ["rightHip", "rightKnee", "leg"],
   ["rightKnee", "rightAnkle", "leg"],
+  ["rightAnkle", "rightHeel", "leg"],
+  ["rightHeel", "rightFootIndex", "leg"],
   ["leftShoulder", "leftHip", "side"],
   ["rightShoulder", "rightHip", "side"]
 ];
@@ -98,10 +90,29 @@ function setCylinderBetween(mesh, start, end) {
   mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize());
 }
 
+function containRect(sourceWidth, sourceHeight, targetWidth, targetHeight) {
+  if (!sourceWidth || !sourceHeight || !targetWidth || !targetHeight) {
+    return { x: 0, y: 0, width: targetWidth, height: targetHeight };
+  }
+
+  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+
+  return {
+    x: (targetWidth - width) / 2,
+    y: (targetHeight - height) / 2,
+    width,
+    height
+  };
+}
+
 export class MushyAvatar {
-  constructor(mount, metaElement) {
+  constructor(mount, metaElement, options = {}) {
     this.mount = mount;
     this.metaElement = metaElement;
+    this.framedViewport = Boolean(options.framedViewport ?? mount?.id === "riggedModelMount");
+    this._viewport = { x: 0, y: 0, width: 0, height: 0 };
     this.startedAt = performance.now();
     this.lastFrameAt = this.startedAt;
     this.points = new Map();
@@ -111,7 +122,25 @@ export class MushyAvatar {
     this.bones = [];
     this.activePoints = new Set();
     this.latestTrackedAt = 0;
+    this.latestFaceTrackedAt = 0;
+    this.faceRig = null;
     this.latestHandTrackedAt = { left: 0, right: 0 };
+    this.faceTargets = new Map();
+    this.facePoints = new Map();
+    this.faceFilters = new Map();
+    this.faceVisible = new Set();
+    FACE_HEAD_KEYS.forEach((name) => {
+      this.faceTargets.set(name, new THREE.Vector3());
+      this.facePoints.set(name, new THREE.Vector3());
+      this.faceFilters.set(name, {
+        x: new OneEuro({ minCutoff: 2.2, beta: 0.024 }),
+        y: new OneEuro({ minCutoff: 2.2, beta: 0.024 }),
+        z: new OneEuro({ minCutoff: 1.2, beta: 0.01 })
+      });
+    });
+    this._headEuler = new THREE.Euler();
+    this._headTargetQuat = new THREE.Quaternion();
+    this._headLookMatrix = new THREE.Matrix4();
     this.paused = false;
     this._mapScratch = new THREE.Vector3();
 
@@ -119,7 +148,7 @@ export class MushyAvatar {
     this.scene.background = new THREE.Color(0x06080e);
 
     this.camera = new THREE.PerspectiveCamera(38, 16 / 9, 0.1, 100);
-    this.camera.position.set(0, 0.35, 7.2);
+    this.frameBodyCamera();
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -295,15 +324,19 @@ export class MushyAvatar {
   }
 
   mapLandmark(landmark, out = this._mapScratch) {
-    return out.set(
-      (0.5 - landmark.x) * 4.3,
-      (0.58 - landmark.y) * 4.8,
-      -0.65 - (landmark.z || 0) * 1.4 // damp noisy MediaPipe depth
-    );
+    return mapPoseLandmark(landmark, out);
+  }
+
+  mapHandLandmark(landmark, out = this._mapScratch) {
+    return mapHandPoint(landmark, out);
   }
 
   isHandSideActive(side) {
     return performance.now() - this.latestHandTrackedAt[side] <= 900;
+  }
+
+  isFaceActive() {
+    return performance.now() - this.latestFaceTrackedAt <= 900 && Boolean(this.faceRig);
   }
 
   isAnyHandActive() {
@@ -312,15 +345,45 @@ export class MushyAvatar {
 
   refreshMeta() {
     const bodyActive = performance.now() - this.latestTrackedAt <= 900;
+    const faceActive = this.isFaceActive();
     const leftActive = this.isHandSideActive("left");
     const rightActive = this.isHandSideActive("right");
-    if (!bodyActive && !leftActive && !rightActive) return;
+    if (!bodyActive && !faceActive && !leftActive && !rightActive) return;
 
     const parts = [];
     if (bodyActive) parts.push(`${this.activePoints.size} body pts`);
+    if (faceActive) parts.push("face rig");
     if (leftActive) parts.push("L hand");
     if (rightActive) parts.push("R hand");
     this.metaElement.textContent = `Mushy tracking · ${parts.join(" · ")}`;
+  }
+
+  updateFace(faceLandmarks, media = {}) {
+    this.faceVisible.clear();
+
+    if (!faceLandmarks?.length) {
+      if (performance.now() - this.latestFaceTrackedAt > 150) {
+        this.faceRig = null;
+        this.latestFaceTrackedAt = 0;
+      }
+      return;
+    }
+
+    FACE_HEAD_KEYS.forEach((name) => {
+      const landmark = faceLandmarks[FACE_HEAD_LANDMARKS[name]];
+      if (!landmark) return;
+      this.faceTargets.get(name).copy(this.mapLandmark(landmark));
+      this.faceVisible.add(name);
+    });
+
+    const next = solveFaceRig(faceLandmarks, media);
+    if (next) {
+      this.faceRig = next;
+      this.latestFaceTrackedAt = performance.now();
+    } else if (performance.now() - this.latestFaceTrackedAt > 150) {
+      this.faceRig = null;
+      this.latestFaceTrackedAt = 0;
+    }
   }
 
   updatePose(poseLandmarks) {
@@ -347,8 +410,9 @@ export class MushyAvatar {
     this.updateHandSide("right", rightHandLandmarks);
   }
 
-  updateTracking({ poseLandmarks, leftHandLandmarks, rightHandLandmarks } = {}) {
+  updateTracking({ poseLandmarks, faceLandmarks, leftHandLandmarks, rightHandLandmarks, media } = {}) {
     this.updatePose(poseLandmarks);
+    this.updateFace(faceLandmarks, media);
     this.updateHands(leftHandLandmarks, rightHandLandmarks);
     this.refreshMeta();
   }
@@ -363,26 +427,78 @@ export class MushyAvatar {
     let visible = 0;
     landmarks.forEach((landmark, index) => {
       if (!landmark) return;
-      rig.targets.get(index).copy(this.mapLandmark(landmark));
+      rig.targets.get(index).copy(this.mapHandLandmark(landmark));
       visible += 1;
     });
 
     if (visible >= 10) {
       rig.active = true;
       this.latestHandTrackedAt[side] = performance.now();
+      const wristKey = side === "left" ? "leftWrist" : "rightWrist";
+      if (landmarks[0]) {
+        this.targetPoints.get(wristKey).copy(this.mapHandLandmark(landmarks[0]));
+        this.activePoints.add(wristKey);
+        this.latestTrackedAt = performance.now();
+      }
     } else {
       rig.active = false;
       this.latestHandTrackedAt[side] = 0;
     }
   }
 
+  smoothFacePoints(delta) {
+    if (!this.isFaceActive()) return;
+    this.faceVisible.forEach((name) => {
+      const target = this.faceTargets.get(name);
+      const point = this.facePoints.get(name);
+      const filter = this.faceFilters.get(name);
+      point.set(
+        filter.x.filter(target.x, delta),
+        filter.y.filter(target.y, delta),
+        filter.z.filter(target.z, delta)
+      );
+    });
+  }
+
+  applyFaceHead(delta) {
+    if (!this.faceRig?.forward || !this.faceRig?.up) return;
+
+    const nose = this.facePoints.get("noseTip");
+    if (nose) {
+      this._mapScratch.set(
+        THREE.MathUtils.clamp(nose.x, -1.4, 1.4),
+        THREE.MathUtils.clamp(nose.y, 0.35, 1.85),
+        THREE.MathUtils.clamp(nose.z, -1.15, -0.45)
+      );
+      this.head.position.lerp(this._mapScratch, Math.min(delta * 10, 1));
+    }
+
+    this._headLookMatrix.lookAt(
+      new THREE.Vector3(0, 0, 0),
+      this.faceRig.forward,
+      this.faceRig.up
+    );
+    this._headTargetQuat.setFromRotationMatrix(this._headLookMatrix);
+    this.head.quaternion.slerp(this._headTargetQuat, 0.35);
+
+    const leftEye = this.facePoints.get("leftEyeOuter");
+    const rightEye = this.facePoints.get("rightEyeOuter");
+    if (leftEye && rightEye) {
+      const neckAnchor = midpoint(leftEye, rightEye);
+      this.neck.visible = true;
+      setCylinderBetween(this.neck, neckAnchor, this.head.position);
+    }
+    this.head.scale.setScalar(0.92);
+  }
+
   animateIdle(delta) {
     const now = performance.now();
     const bodyTracking = now - this.latestTrackedAt <= 900;
+    const faceTracking = this.isFaceActive();
     const handTracking = this.isAnyHandActive();
     const t = (now - this.startedAt) / 1000;
 
-    if (!bodyTracking && !handTracking) {
+    if (!bodyTracking && !faceTracking && !handTracking) {
       this.activePoints.clear();
       this.metaElement.textContent = "Mushy waiting for your body pose";
       this.bones.forEach(({ mesh }) => {
@@ -411,6 +527,15 @@ export class MushyAvatar {
       return;
     }
 
+    if (!bodyTracking && faceTracking && !handTracking) {
+      this.root.rotation.y = 0;
+      this.root.position.y = -0.15;
+      this.torso.position.lerp(new THREE.Vector3(0, -0.25, -0.65), Math.min(delta * 5, 1));
+      this.torso.visible = true;
+      this.torso.scale.set(0.72, 0.95, 0.3);
+      return;
+    }
+
     this.root.rotation.y = Math.sin(t * 0.45) * 0.12;
     this.root.position.y = -0.15 + Math.sin(t * 1.4) * 0.035;
     this.antenna.rotation.z = Math.sin(t * 2.6) * 0.18;
@@ -429,7 +554,14 @@ export class MushyAvatar {
       joint.position.copy(point);
     });
 
+    this.smoothFacePoints(delta);
+
     const bodyTracking = performance.now() - this.latestTrackedAt <= 900;
+    const faceTracking = this.isFaceActive();
+
+    if (faceTracking && (!bodyTracking || !this.activePoints.has("nose"))) {
+      this.applyFaceHead(delta);
+    }
 
     if (bodyTracking) {
       this.root.rotation.y = 0;
@@ -474,7 +606,9 @@ export class MushyAvatar {
           new THREE.Vector3().subVectors(shoulderMid, hipMid).normalize()
         );
 
-        if (this.activePoints.has("nose")) {
+        if (faceTracking) {
+          this.applyFaceHead(delta);
+        } else if (this.activePoints.has("nose")) {
           const nose = this.points.get("nose");
           const headTarget = nose.clone().add(new THREE.Vector3(0, 0.18, 0.02));
           this.head.position.lerp(headTarget, Math.min(delta * 10, 1));
@@ -535,9 +669,17 @@ export class MushyAvatar {
         );
       });
 
+      const visibleSet = new Set(Array.from({ length: 21 }, (_, index) => index));
+
       rig.segments.forEach(({ from, to, mesh }) => {
-        const start = rig.points.get(from);
-        const end = rig.points.get(to);
+        const segment = resolveFingerSegment(
+          from,
+          to,
+          (index) => rig.points.get(index),
+          visibleSet
+        );
+        const start = rig.points.get(segment.from);
+        const end = rig.points.get(segment.to);
         const visible = start.distanceTo(end) > 0.008;
         mesh.visible = visible;
         if (visible) setCylinderBetween(mesh, start, end);
@@ -560,8 +702,53 @@ export class MushyAvatar {
     this.lastFrameAt = now;
     this.animateIdle(delta);
     this.updateRig(delta);
-    this.renderer.render(this.scene, this.camera);
+    this.syncAttachedModel?.(delta);
+    this.frameBodyCamera();
+    this.renderFrame();
     this.rafId = requestAnimationFrame(() => this.animate());
+  }
+
+  getViewportAspect() {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue("--viz-aspect").trim();
+    const parsed = Number.parseFloat(raw);
+    return parsed > 0 ? parsed : 9 / 16;
+  }
+
+  updateViewportRect() {
+    const containerW = Math.max(this.mount.clientWidth, 1);
+    const containerH = Math.max(this.mount.clientHeight, 1);
+
+    if (!this.framedViewport) {
+      this._viewport = { x: 0, y: 0, width: containerW, height: containerH };
+      this.camera.aspect = containerW / containerH;
+      this.camera.updateProjectionMatrix();
+      return;
+    }
+
+    const rect = containRect(this.getViewportAspect(), 1, containerW, containerH);
+    this._viewport = rect;
+    this.camera.aspect = rect.width / Math.max(rect.height, 1);
+    this.camera.updateProjectionMatrix();
+  }
+
+  renderFrame() {
+    const containerW = Math.max(this.mount.clientWidth, 1);
+    const containerH = Math.max(this.mount.clientHeight, 1);
+    this.renderer.setScissorTest(false);
+    this.renderer.setViewport(0, 0, containerW, containerH);
+    this.renderer.setClearColor(this.scene.background);
+    this.renderer.clear(true, true, true);
+
+    if (this.framedViewport && this._viewport.width > 0 && this._viewport.height > 0) {
+      const { x, y, width, height } = this._viewport;
+      const vpY = containerH - y - height;
+      this.renderer.setScissorTest(true);
+      this.renderer.setScissor(x, vpY, width, height);
+      this.renderer.setViewport(x, vpY, width, height);
+    }
+
+    this.renderer.render(this.scene, this.camera);
+    this.renderer.setScissorTest(false);
   }
 
   setPaused(paused) {
@@ -583,11 +770,134 @@ export class MushyAvatar {
     }
   }
 
+  collectFramingPoints() {
+    const points = [];
+    const bodyActive = performance.now() - this.latestTrackedAt <= 900;
+
+    if (bodyActive) {
+      this.activePoints.forEach((name) => {
+        const point = this.points.get(name);
+        if (point) points.push(point);
+      });
+    }
+
+    if (this.isFaceActive()) {
+      this.faceVisible.forEach((name) => {
+        const point = this.facePoints.get(name);
+        if (point) points.push(point);
+      });
+    }
+
+    ["left", "right"].forEach((side) => {
+      if (!this.isHandSideActive(side)) return;
+      this.hands[side].points.forEach((point) => points.push(point));
+    });
+
+    return points;
+  }
+
+  frameCameraToPoints(points, { spanScale = 1 } = {}) {
+    if (!points.length) {
+      this.frameBodyCameraDefault();
+      return;
+    }
+
+    const aspect = this.framedViewport ? this.getViewportAspect() : this.camera.aspect;
+    const viewW =
+      this.framedViewport && this._viewport.width > 0
+        ? this._viewport.width
+        : Math.max(this.mount.clientWidth, 1);
+    const viewH =
+      this.framedViewport && this._viewport.height > 0
+        ? this._viewport.height
+        : Math.max(this.mount.clientHeight, 1);
+    const pad = 16;
+
+    let minXWorld = Infinity;
+    let maxXWorld = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let sumZ = 0;
+
+    points.forEach((point) => {
+      minXWorld = Math.min(minXWorld, point.x);
+      maxXWorld = Math.max(maxXWorld, point.x);
+      minY = Math.min(minY, point.y);
+      maxY = Math.max(maxY, point.y);
+      sumZ += point.z;
+    });
+
+    const spanXWorld = Math.max((maxXWorld - minXWorld) * spanScale, 0.35);
+    const spanY = Math.max((maxY - minY) * spanScale, 0.35);
+    const lookX = (minXWorld + maxXWorld) * 0.5;
+    const lookY = (minY + maxY) * 0.5;
+    const lookZ = sumZ / points.length;
+    const marginY = viewH / Math.max(viewH - pad * 2, 1);
+    const marginX = viewW / Math.max(viewW - pad * 2, 1);
+
+    const vFovRad = (this.camera.fov * Math.PI) / 180;
+    const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * Math.max(this.camera.aspect, 0.01));
+    const distV = (spanY * marginY) / (2 * Math.tan(vFovRad / 2));
+    const distH = (spanXWorld * marginX) / (2 * Math.tan(hFovRad / 2));
+    const distance = Math.max(Math.max(distV, distH), 1.4);
+
+    this.camera.position.set(lookX, lookY, lookZ + distance);
+    this.camera.lookAt(lookX, lookY, lookZ);
+  }
+
+  frameBodyCameraDefault() {
+    let lookY = 0.42;
+    let lookZ = -0.48;
+    let bodySpan = 2.45;
+
+    const bodyTracking = performance.now() - this.latestTrackedAt <= 900;
+    if (bodyTracking && this.activePoints.size > 0) {
+      let minY = Infinity;
+      let maxY = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+
+      this.activePoints.forEach((name) => {
+        const point = this.points.get(name);
+        if (!point) return;
+        minY = Math.min(minY, point.y);
+        maxY = Math.max(maxY, point.y);
+        minZ = Math.min(minZ, point.z);
+        maxZ = Math.max(maxZ, point.z);
+      });
+
+      if (Number.isFinite(minY) && Number.isFinite(maxY)) {
+        lookY = (minY + maxY) * 0.5;
+        lookZ = (minZ + maxZ) * 0.5;
+        bodySpan = Math.max(maxY - minY, 1.35);
+      }
+    }
+
+    const vFovRad = (this.camera.fov * Math.PI) / 180;
+    const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * this.camera.aspect);
+    const distV = (bodySpan * 0.92) / (2 * Math.tan(vFovRad / 2));
+    const distH = (bodySpan * 0.62) / (2 * Math.tan(hFovRad / 2));
+    const distance = Math.max(Math.max(distV, distH), 1.4);
+    this.camera.position.set(0, lookY, lookZ + distance);
+    this.camera.lookAt(0, lookY, lookZ);
+  }
+
+  frameBodyCamera() {
+    if (this.framedViewport) {
+      const points = this.collectFramingPoints();
+      if (points.length) {
+        this.frameCameraToPoints(points);
+        return;
+      }
+    }
+
+    this.frameBodyCameraDefault();
+  }
+
   resize() {
-    const width = Math.max(this.mount.clientWidth, 320);
-    const height = Math.max(this.mount.clientHeight, 260);
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
+    const width = Math.max(this.mount.clientWidth, 1);
+    const height = Math.max(this.mount.clientHeight, 1);
     this.renderer.setSize(width, height, false);
+    this.updateViewportRect();
   }
 }

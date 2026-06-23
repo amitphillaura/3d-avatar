@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "body": [
     {
       "id": "xbot",
@@ -8,32 +8,22 @@
       "rig": "mixamo",
       "defaultAnimation": "idle",
       "notes": "Included Mixamo rig with idle, walk, run, and more."
-    },
-    {
-      "id": "meshy-01",
-      "name": "Female Base",
-      "file": "body/meshy-01.glb",
-      "rig": "mixamo",
-      "defaultAnimation": "idle",
-      "notes": "Drop your first Meshy export here (rigged GLB, all animations in one file)."
-    },
-    {
-      "id": "meshy-02",
-      "name": "Stylized Character",
-      "file": "body/meshy-02.glb",
-      "rig": "mixamo",
-      "defaultAnimation": "idle",
-      "notes": "Optional second body model."
-    },
-    {
-      "id": "meshy-03",
-      "name": "Meshy Character 3",
-      "file": "body/meshy-03.glb",
-      "rig": "mixamo",
-      "defaultAnimation": "idle",
-      "notes": "Optional third body model."
     }
   ],
+  "bodyOverrides": {
+    "meshy-01.glb": {
+      "name": "Gray Bodysuit",
+      "rig": "meshy",
+      "defaultAnimation": "Armature|walking_man|baselayer",
+      "notes": "Meshy biped. Pick an animation from the dropdown to preview; otherwise holds rest pose until pose tracking."
+    },
+    "meshy-02.glb": {
+      "name": "Violet Vanguard",
+      "rig": "meshy",
+      "defaultAnimation": "Armature|walking_man|baselayer",
+      "notes": "Meshy biped. Walking + running in Meshy export; walking clip bundled here."
+    }
+  },
   "face": [
     {
       "id": "face-01",

@@ -59,21 +59,6 @@
                 <option value="skeleton" selected>Clean Skeleton</option>
               </select>
             </label>
-
-            <label class="toggle-field">
-              <input id="loopVideo" type="checkbox" />
-              <span>Loop Video</span>
-            </label>
-          </div>
-
-          <div class="sidebar-section sidebar-section--actions" id="cameraControls">
-            <button id="retryCamera" type="button" class="btn btn--primary">Start Camera</button>
-            <button id="restartCamera" type="button" class="btn">Restart Camera</button>
-          </div>
-
-          <div class="sidebar-section sidebar-section--actions" id="videoControls" hidden>
-            <button id="playVideo" type="button" class="btn" disabled>Play / Pause</button>
-            <button id="restartVideo" type="button" class="btn" disabled>Restart Video</button>
           </div>
 
           <div class="sidebar-section sidebar-section--actions">
@@ -98,13 +83,77 @@
         <div class="dashboard">
           <section class="analysis-grid" aria-label="Live visualizations and keypoint tables">
             <article class="analysis-column analysis-column--viz-only" aria-label="Raw camera or video feed">
-              <div class="viz-card">
+              <div class="viz-card viz-card--raw">
                 <header class="tile-header">
                   <h2 id="rawPanelTitle">Raw Camera / Video</h2>
                   <span class="tile-badge tile-badge--ready">Ready</span>
                 </header>
                 <div class="tile-player">
                   <canvas id="output" width="1280" height="720" aria-label="Full media output"></canvas>
+                </div>
+                <div class="raw-media-controls" aria-label="Camera and video controls">
+                  <div id="cameraControls" class="media-control-bar">
+                    <button id="retryCamera" type="button" class="media-btn media-btn--accent">
+                      <span class="media-btn-icon" aria-hidden="true">▶</span>
+                      Start Camera
+                    </button>
+                    <button id="restartCamera" type="button" class="media-btn" disabled>
+                      <span class="media-btn-icon" aria-hidden="true">↻</span>
+                      Restart
+                    </button>
+                  </div>
+                  <div id="videoControls" class="media-control-bar media-control-bar--video" hidden>
+                    <div class="media-control-actions">
+                      <button id="playVideo" type="button" class="media-btn media-btn--accent" disabled>
+                        <span class="media-btn-icon" aria-hidden="true">▶</span>
+                        Play
+                      </button>
+                      <button id="restartVideo" type="button" class="media-btn" disabled>
+                        <span class="media-btn-icon" aria-hidden="true">↻</span>
+                        Restart
+                      </button>
+                      <label class="media-toggle">
+                        <input id="loopVideo" type="checkbox" />
+                        <span>Loop</span>
+                      </label>
+                    </div>
+                    <label class="media-scrub is-disabled">
+                      <span class="media-scrub-label">
+                        Frame
+                        <span class="media-scrub-values">
+                          <output id="videoScrubValue" for="videoScrub">0</output>
+                          <span aria-hidden="true">/</span>
+                          <span id="videoScrubDuration">0</span>
+                        </span>
+                      </span>
+                      <input
+                        id="videoScrub"
+                        type="range"
+                        min="0"
+                        max="0"
+                        step="1"
+                        value="0"
+                        disabled
+                        aria-label="Video frame position"
+                      />
+                    </label>
+                    <label class="media-speed">
+                      <span class="media-speed-label">
+                        Playback
+                        <output id="playbackSpeedValue" for="playbackSpeed">100%</output>
+                      </span>
+                      <input
+                        id="playbackSpeed"
+                        type="range"
+                        min="10"
+                        max="300"
+                        step="1"
+                        value="100"
+                        disabled
+                        aria-label="Playback speed percentage"
+                      />
+                    </label>
+                  </div>
                 </div>
                 <footer class="tile-footer">
                   <span id="frameMeta">Waiting for camera...</span>
@@ -113,10 +162,36 @@
               </div>
             </article>
 
+            <article class="analysis-column analysis-column--viz-only" aria-label="Full body skeleton">
+              <div class="viz-card viz-card--full-skeleton">
+                <header class="tile-header">
+                  <h2>Full Skeleton</h2>
+                  <span class="tile-badge tile-badge--ready">Live</span>
+                </header>
+                <div class="tile-player tile-player--full-skeleton">
+                  <canvas
+                    id="fullSkeleton"
+                    class="focus-canvas"
+                    width="420"
+                    height="560"
+                    aria-label="Combined body, head, and hand skeleton"
+                  ></canvas>
+                </div>
+                <footer class="tile-footer">
+                  <span id="fullSkeletonMeta">Body + head + hands · waiting for tracking</span>
+                </footer>
+              </div>
+            </article>
+
             <article class="analysis-column analysis-column--viz-only" aria-label="Rigged textured model">
               <div class="viz-card">
                 <header class="tile-header">
-                  <h2>Rigged Model (Textured)</h2>
+                  <label class="tile-model-picker">
+                    <span class="tile-model-picker-label">Rigged Model</span>
+                    <select id="riggedModelSelect" class="tile-model-select" aria-label="Choose rigged body model">
+                      <option value="mushy">Mushy Rig</option>
+                    </select>
+                  </label>
                   <span class="tile-badge tile-badge--ready" id="riggedBadge">Ready</span>
                 </header>
                 <div class="tile-player tile-player--3d" id="riggedModelMount" aria-label="Primary rigged model"></div>
@@ -240,7 +315,7 @@
             <article class="dock-card dock-card--models" aria-label="Body models">
               <header class="dock-header">
                 <h3>Body Models</h3>
-                <span>Click a card to drive the hero viewport</span>
+                <span>Use the hero dropdown or click a card</span>
               </header>
               <div id="bodyModelGallery" class="model-gallery" aria-label="Body model gallery"></div>
               <div id="faceModelGallery" class="model-gallery model-gallery--face" aria-label="Face model gallery"></div>

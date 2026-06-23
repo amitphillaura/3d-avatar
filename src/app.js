@@ -1,6 +1,14 @@
 import "./styles.css";
 import { MushyAvatar } from "./avatar.js";
 import { ModelGallery } from "./modelGallery.js";
+import { rescanBodyModels } from "./modelRegistry.js";
+import {
+  POSE,
+  POSE_BONE_CONNECTIONS,
+  POSE_FOOT_CONNECTIONS,
+  POSE_FOOT_JOINTS,
+  shoulderMidFromPose
+} from "./skeletonGraph.js";
 
 const videoElement = document.createElement("video");
 videoElement.setAttribute("playsinline", "");
@@ -26,10 +34,12 @@ const bodyTableEl = document.getElementById("bodyTable");
 const faceTableEl = document.getElementById("faceTable");
 const leftHandTableEl = document.getElementById("leftHandTable");
 const rightHandTableEl = document.getElementById("rightHandTable");
+const fullSkeletonCanvas = document.getElementById("fullSkeleton");
 const bodySkeletonCanvas = document.getElementById("bodySkeleton");
 const faceSkeletonCanvas = document.getElementById("faceSkeleton");
 const leftHandSkeletonCanvas = document.getElementById("leftHandSkeleton");
 const rightHandSkeletonCanvas = document.getElementById("rightHandSkeleton");
+const fullSkeletonCtx = fullSkeletonCanvas.getContext("2d");
 const bodySkeletonCtx = bodySkeletonCanvas.getContext("2d");
 const faceSkeletonCtx = faceSkeletonCanvas.getContext("2d");
 const leftHandSkeletonCtx = leftHandSkeletonCanvas.getContext("2d");
@@ -37,12 +47,18 @@ const rightHandSkeletonCtx = rightHandSkeletonCanvas.getContext("2d");
 const copyButton = document.getElementById("copyKeypoints");
 const playVideoButton = document.getElementById("playVideo");
 const restartVideoButton = document.getElementById("restartVideo");
+const playbackSpeedInput = document.getElementById("playbackSpeed");
+const playbackSpeedValueEl = document.getElementById("playbackSpeedValue");
+const videoScrubInput = document.getElementById("videoScrub");
+const videoScrubValueEl = document.getElementById("videoScrubValue");
+const videoScrubDurationEl = document.getElementById("videoScrubDuration");
 const snapshotButton = document.getElementById("downloadSnapshot");
 const retryButton = document.getElementById("retryCamera");
 const restartCameraButton = document.getElementById("restartCamera");
 const frameMetaEl = document.getElementById("frameMeta");
 const detectionStateEl = document.getElementById("detectionState");
 const bodyTrackingMetaEl = document.getElementById("bodyTrackingMeta");
+const fullSkeletonMetaEl = document.getElementById("fullSkeletonMeta");
 const faceTrackingMetaEl = document.getElementById("faceTrackingMeta");
 const leftHandTrackingMetaEl = document.getElementById("leftHandTrackingMeta");
 const rightHandTrackingMetaEl = document.getElementById("rightHandTrackingMeta");
@@ -50,6 +66,8 @@ const bodyModelGalleryEl = document.getElementById("bodyModelGallery");
 const faceModelGalleryEl = document.getElementById("faceModelGallery");
 const riggedModelMountEl = document.getElementById("riggedModelMount");
 const riggedModelMetaEl = document.getElementById("riggedModelMeta");
+const riggedModelSelectEl = document.getElementById("riggedModelSelect");
+const riggedBadgeEl = document.getElementById("riggedBadge");
 const driverNameEl = document.getElementById("driverName");
 const driverMetaEl = document.getElementById("driverMeta");
 const driverAnimSelectEl = document.getElementById("driverAnimSelect");
@@ -72,6 +90,9 @@ let cameraLoopId = null;
 let autoCameraTimer = null;
 let isProcessingFrame = false;
 let videoLoaded = false;
+let videoScrubbing = false;
+
+const VIDEO_SCRUB_FPS = 30;
 let imageLoaded = false;
 let currentImageName = "";
 let currentMediaRect = null;
@@ -101,7 +122,11 @@ const KEY_LANDMARKS = {
   left_knee: 25,
   right_knee: 26,
   left_ankle: 27,
-  right_ankle: 28
+  right_ankle: 28,
+  left_heel: 29,
+  right_heel: 30,
+  left_foot_index: 31,
+  right_foot_index: 32
 };
 
 const FACE_LANDMARKS = {
@@ -165,6 +190,115 @@ function getRawPlaceholderMessage() {
   return cameraInstance ? "Webcam live" : "Click Start Camera to begin";
 }
 
+function setMediaButtonLabel(button, icon, label) {
+  if (!button) return;
+  const iconEl = button.querySelector(".media-btn-icon");
+  if (iconEl) iconEl.textContent = icon;
+  for (const node of button.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      node.textContent = ` ${label}`;
+      break;
+    }
+  }
+}
+
+function applyPlaybackSpeed(percent = Number(playbackSpeedInput?.value || 100)) {
+  const clamped = Math.max(10, Math.min(300, Math.round(percent)));
+  videoElement.playbackRate = clamped / 100;
+  if (playbackSpeedInput) playbackSpeedInput.value = String(clamped);
+  if (playbackSpeedValueEl) playbackSpeedValueEl.textContent = `${clamped}%`;
+}
+
+function getVideoFrameCount() {
+  const duration = videoElement.duration;
+  if (!Number.isFinite(duration) || duration <= 0) return 0;
+  return Math.max(1, Math.floor(duration * VIDEO_SCRUB_FPS));
+}
+
+function frameToTime(frame) {
+  return frame / VIDEO_SCRUB_FPS;
+}
+
+function timeToFrame(time) {
+  return Math.max(0, Math.round(time * VIDEO_SCRUB_FPS));
+}
+
+function updateVideoFrameMeta() {
+  if (sourceSelect.value !== "video" || !videoLoaded) return;
+
+  const frame = timeToFrame(videoElement.currentTime);
+  const total = getVideoFrameCount();
+  if (videoElement.paused || videoElement.ended) {
+    frameMetaEl.textContent = `Frame ${frame} / ${total} · paused`;
+    return;
+  }
+
+  frameMetaEl.textContent = `Frame ${frame} / ${total} · ${playbackSpeedValueEl?.textContent || "100%"}`;
+}
+
+function syncVideoScrubControls() {
+  if (!videoScrubInput) return;
+
+  const enabled = sourceSelect.value === "video" && videoLoaded;
+  const frameCount = getVideoFrameCount();
+  videoScrubInput.disabled = !enabled || frameCount <= 0;
+  videoScrubInput.closest(".media-scrub")?.classList.toggle("is-disabled", videoScrubInput.disabled);
+
+  if (!enabled || frameCount <= 0) {
+    videoScrubInput.max = "0";
+    videoScrubInput.value = "0";
+    if (videoScrubValueEl) videoScrubValueEl.textContent = "0";
+    if (videoScrubDurationEl) videoScrubDurationEl.textContent = "0";
+    return;
+  }
+
+  videoScrubInput.max = String(frameCount);
+  if (!videoScrubbing) {
+    videoScrubInput.value = String(Math.min(timeToFrame(videoElement.currentTime), frameCount));
+  }
+  if (videoScrubValueEl) videoScrubValueEl.textContent = videoScrubInput.value;
+  if (videoScrubDurationEl) videoScrubDurationEl.textContent = String(frameCount);
+}
+
+async function seekVideoFrame(frame, { playAfter = false } = {}) {
+  if (!videoLoaded) return;
+
+  const frameCount = getVideoFrameCount();
+  if (frameCount <= 0) return;
+
+  const clampedFrame = Math.min(Math.max(Math.round(frame), 0), frameCount);
+  const time = Math.min(frameToTime(clampedFrame), Math.max(videoElement.duration - 0.001, 0));
+
+  stopVideoPlayback();
+  videoElement.currentTime = time;
+  syncVideoScrubControls();
+  await processCurrentFrame();
+
+  if (playAfter) {
+    await playLoadedVideo();
+    return;
+  }
+
+  syncPlayButtonState();
+  updateVideoFrameMeta();
+}
+
+function syncPlayButtonState() {
+  if (!playVideoButton) return;
+  const playing = videoLoaded && !videoElement.paused && !videoElement.ended;
+  playVideoButton.classList.toggle("is-active", playing);
+  setMediaButtonLabel(playVideoButton, playing ? "⏸" : "▶", playing ? "Pause" : "Play");
+}
+
+function syncCameraButtonState() {
+  if (!retryButton) return;
+  const active = Boolean(cameraInstance);
+  retryButton.classList.toggle("is-active", active);
+  retryButton.classList.toggle("media-btn--accent", !active);
+  retryButton.classList.toggle("media-btn--stop", active);
+  setMediaButtonLabel(retryButton, active ? "⏹" : "▶", active ? "Stop Camera" : "Start Camera");
+}
+
 function syncSourceUI() {
   const source = sourceSelect.value;
   const isCamera = source === "camera";
@@ -175,29 +309,41 @@ function syncSourceUI() {
   if (loadMediaFieldEl) loadMediaFieldEl.hidden = isCamera;
   if (cameraControlsEl) cameraControlsEl.hidden = !isCamera;
   if (videoControlsEl) videoControlsEl.hidden = !isVideo;
-  if (loopVideoToggle?.closest(".toggle-field")) {
-    loopVideoToggle.closest(".toggle-field").hidden = !isVideo;
-  }
   if (videoFileInput) {
     videoFileInput.accept = isImage ? "image/*" : isVideo ? "video/*" : "image/*,video/*";
   }
 
   if (isCamera) {
     retryButton.disabled = false;
-    retryButton.textContent = cameraInstance ? "Stop Camera" : "Start Camera";
     if (restartCameraButton) restartCameraButton.disabled = !cameraInstance;
+    syncCameraButtonState();
   } else {
     retryButton.disabled = true;
-    retryButton.textContent = "Start Camera";
+    retryButton.classList.remove("is-active", "media-btn--stop");
+    retryButton.classList.add("media-btn--accent");
+    setMediaButtonLabel(retryButton, "▶", "Start Camera");
     if (restartCameraButton) restartCameraButton.disabled = true;
   }
 
   if (isVideo) {
     playVideoButton.disabled = !videoLoaded;
     restartVideoButton.disabled = !videoLoaded;
+    if (playbackSpeedInput) {
+      playbackSpeedInput.disabled = !videoLoaded;
+      playbackSpeedInput.closest(".media-speed")?.classList.toggle("is-disabled", !videoLoaded);
+    }
+    syncVideoScrubControls();
+    syncPlayButtonState();
   } else {
     playVideoButton.disabled = true;
     restartVideoButton.disabled = true;
+    playVideoButton.classList.remove("is-active");
+    setMediaButtonLabel(playVideoButton, "▶", "Play");
+    if (playbackSpeedInput) {
+      playbackSpeedInput.disabled = true;
+      playbackSpeedInput.closest(".media-speed")?.classList.toggle("is-disabled", true);
+    }
+    syncVideoScrubControls();
   }
 }
 
@@ -208,11 +354,16 @@ function refreshRawPanel() {
   }
 
   initCanvasPlaceholder(getRawPlaceholderMessage());
+  syncVizPlayerLayout();
   if (sourceSelect.value === "camera") {
     frameMetaEl.textContent = cameraInstance ? "Camera active" : "Camera idle";
     setDetectionState(cameraInstance ? "Searching" : "Idle");
   } else if (sourceSelect.value === "video") {
-    frameMetaEl.textContent = videoLoaded ? "Video loaded · paused" : "Waiting for video file...";
+    if (videoLoaded) {
+      updateVideoFrameMeta();
+    } else {
+      frameMetaEl.textContent = "Waiting for video file...";
+    }
     setDetectionState("Idle");
   } else {
     frameMetaEl.textContent = imageLoaded
@@ -254,6 +405,53 @@ function createLandmarkProjector(points, drawRect, pad = 16, aspect = 1) {
   };
 }
 
+function mergeLandmarkSets(...sets) {
+  const merged = [];
+  sets.forEach((set) => {
+    if (!set) return;
+    if (Array.isArray(set)) {
+      set.forEach((point) => point && merged.push(point));
+      return;
+    }
+    Object.values(set).forEach((point) => point && merged.push(point));
+  });
+  return merged;
+}
+
+function createUnifiedProjector(drawRect, pad = 18, aspect = 1, ...sets) {
+  const merged = mergeLandmarkSets(...sets);
+  if (!merged.length) return null;
+  return createLandmarkProjector(merged, drawRect, pad, aspect);
+}
+
+function drawConnectorSet(ctx, project, landmarks, connections, color, lineWidth = 2) {
+  if (!landmarks || !connections?.length) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = "round";
+  connections.forEach(([a, b]) => {
+    if (!landmarks[a] || !landmarks[b]) return;
+    const p = project(landmarks[a]);
+    const q = project(landmarks[b]);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(q.x, q.y);
+    ctx.stroke();
+  });
+}
+
+function drawJointDots(ctx, project, landmarks, indices, radius = 3, color = "#ffffff") {
+  if (!landmarks) return;
+  ctx.fillStyle = color;
+  indices.forEach((index) => {
+    if (!landmarks[index]) return;
+    const p = project(landmarks[index]);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
 function paintSkeletonBackdrop(ctx, canvas, drawRect) {
   ctx.fillStyle = "#020306";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -264,6 +462,28 @@ function paintSkeletonBackdrop(ctx, canvas, drawRect) {
 
 function resizeOutputCanvasToDisplay() {
   resizeCanvasToDisplay(canvasElement);
+}
+
+function syncVizPlayerLayout() {
+  const refPlayer = document.querySelector(".viz-card--raw .tile-player");
+  if (!refPlayer) return;
+
+  const height = Math.max(1, Math.round(refPlayer.clientHeight));
+  document.documentElement.style.setProperty("--viz-player-height", `${height}px`);
+  document.documentElement.style.setProperty("--viz-aspect", String(getSourceAspectRatio()));
+
+  window.__avatar?.resize?.();
+
+  if (latestResults) {
+    updateKeypointsPanel();
+    return;
+  }
+
+  drawFullSkeleton();
+  drawBodySkeleton();
+  drawFaceSkeleton();
+  drawLeftHandSkeleton();
+  drawRightHandSkeleton();
 }
 
 function containRect(sourceWidth, sourceHeight, targetWidth, targetHeight) {
@@ -564,6 +784,18 @@ function updateTrackingFooters(exportData) {
       ? "Tracking active · 21 pts"
       : "Tracking inactive · 21 pts";
   }
+
+  if (fullSkeletonMetaEl) {
+    const parts = [];
+    if (bodyActive) parts.push("body");
+    if (faceActive) parts.push("head");
+    if (leftActive) parts.push("L hand");
+    if (rightActive) parts.push("R hand");
+    if (bodyActive && latestResults?.poseLandmarks?.[POSE.leftHeel]) parts.push("feet");
+    fullSkeletonMetaEl.textContent = parts.length
+      ? `Tracking · ${parts.join(" + ")}`
+      : "Body + head + hands · waiting for tracking";
+  }
 }
 
 function buildLandmarkTable(rows, withVisibility) {
@@ -595,11 +827,7 @@ function buildLandmarkTable(rows, withVisibility) {
 }
 
 // Pose connections for the body skeleton preview (MediaPipe pose indices).
-const SKELETON_BONES = [
-  [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
-  [11, 23], [12, 24], [23, 24],
-  [23, 25], [25, 27], [24, 26], [26, 28]
-];
+const SKELETON_BONES = POSE_BONE_CONNECTIONS;
 
 function getSourceAspectRatio() {
   const source = getFrameSource();
@@ -691,6 +919,21 @@ function drawBodySkeleton() {
     ctx.arc(p.x, p.y, 3.2, 0, Math.PI * 2);
     ctx.fill();
   });
+
+  const shoulderMid = shoulderMidFromPose(lm);
+  if (shoulderMid && lm[POSE.nose]) {
+    drawConnectorSet(
+      ctx,
+      project,
+      { 0: shoulderMid, 1: lm[POSE.nose] },
+      [[0, 1]],
+      "#9eefff",
+      2.6
+    );
+  }
+
+  drawConnectorSet(ctx, project, lm, POSE_FOOT_CONNECTIONS, "#75a7ff", 2.4);
+  drawJointDots(ctx, project, lm, POSE_FOOT_JOINTS, 2.6, "#75a7ff");
 }
 
 function drawFaceSkeleton() {
@@ -776,6 +1019,69 @@ function drawRightHandSkeleton() {
   );
 }
 
+function drawFullSkeleton() {
+  const ctx = fullSkeletonCtx;
+  const canvas = fullSkeletonCanvas;
+  const pose = latestResults?.poseLandmarks;
+  const face = latestResults?.faceLandmarks;
+  const leftHand = latestResults?.leftHandLandmarks;
+  const rightHand = latestResults?.rightHandLandmarks;
+
+  resizeCanvasToDisplay(canvas);
+
+  if (!pose && !face && !leftHand?.length && !rightHand?.length) {
+    clearSkeleton(ctx, canvas, "No tracking");
+    return;
+  }
+
+  const aspect = getSourceAspectRatio();
+  const drawRect = getAspectDrawRect(canvas.width, canvas.height, aspect);
+  paintSkeletonBackdrop(ctx, canvas, drawRect);
+  const project = createUnifiedProjector(drawRect, 16, aspect, pose, face, leftHand, rightHand);
+  if (!project) {
+    clearSkeleton(ctx, canvas, "No tracking");
+    return;
+  }
+
+  if (pose) {
+    drawConnectorSet(ctx, project, pose, SKELETON_BONES, "#00f0a8", 3.2);
+    drawJointDots(ctx, project, pose, Object.values(KEY_LANDMARKS), 3, "#ffffff");
+
+    const shoulderMid = shoulderMidFromPose(pose);
+    if (shoulderMid && pose[POSE.nose]) {
+      drawConnectorSet(
+        ctx,
+        project,
+        { 0: shoulderMid, 1: pose[POSE.nose] },
+        [[0, 1]],
+        "#9eefff",
+        2.8
+      );
+    }
+
+    drawConnectorSet(ctx, project, pose, POSE_FOOT_CONNECTIONS, "#75a7ff", 2.4);
+    drawJointDots(ctx, project, pose, POSE_FOOT_JOINTS, 2.6, "#75a7ff");
+  }
+
+  if (face) {
+    drawConnectorSet(ctx, project, face, window.FACEMESH_FACE_OVAL, "rgba(255,255,255,0.92)", 2);
+    drawConnectorSet(ctx, project, face, window.FACEMESH_LIPS, "#ff4dff", 1.8);
+    drawConnectorSet(ctx, project, face, window.FACEMESH_LEFT_EYE, "#ffe768", 1.6);
+    drawConnectorSet(ctx, project, face, window.FACEMESH_RIGHT_EYE, "#ffe768", 1.6);
+    drawJointDots(ctx, project, face, [1, 33, 263, 61, 291, 199, 175], 2.2, "#59a6ff");
+  }
+
+  drawHandSet(ctx, project, leftHand, "#ff7bd5");
+  drawHandSet(ctx, project, rightHand, "#59a6ff");
+
+  if (pose && leftHand?.length) {
+    drawConnectorSet(ctx, project, { 0: pose[15], 1: leftHand[0] }, [[0, 1]], "#ff7bd5", 2.4);
+  }
+  if (pose && rightHand?.length) {
+    drawConnectorSet(ctx, project, { 0: pose[16], 1: rightHand[0] }, [[0, 1]], "#59a6ff", 2.4);
+  }
+}
+
 function updateKeypointsPanel() {
   const exportData = buildCurrentExportData({ fullFace: false });
   const { left: leftHands, right: rightHands } = splitHandRows(exportData.hands);
@@ -796,6 +1102,7 @@ function updateKeypointsPanel() {
     ? buildLandmarkTable(rightHands, false)
     : '<p class="kp-empty">No right hand detected yet...</p>';
 
+  drawFullSkeleton();
   drawBodySkeleton();
   drawFaceSkeleton();
   drawLeftHandSkeleton();
@@ -820,6 +1127,7 @@ function updateKeypointsPanel() {
 function drawResults(image) {
   const mode = modeSelect.value;
   resizeOutputCanvasToDisplay();
+  syncVizPlayerLayout();
   const { width: sourceWidth, height: sourceHeight } = getFrameDimensions(image);
   currentMediaRect = containRect(
     sourceWidth,
@@ -968,7 +1276,11 @@ async function processCurrentFrame() {
     await holistic.send({ image: frameSource });
     const { width, height } = getFrameDimensions(frameSource);
     if (width > 0 && height > 0) lastSourceAspect = width / height;
-    modelGallery?.updateTracking(latestResults);
+    modelGallery?.updateTracking(latestResults, {
+      video: frameSource === videoElement ? videoElement : null,
+      width,
+      height
+    });
     drawResults(frameSource);
     updateKeypointsPanel();
     frameMetaEl.textContent = `${width} x ${height} ${getSourceLabel()}`;
@@ -1008,6 +1320,7 @@ function resetDetection() {
   faceTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
   leftHandTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
   rightHandTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
+  clearSkeleton(fullSkeletonCtx, fullSkeletonCanvas, "No tracking");
   clearSkeleton(bodySkeletonCtx, bodySkeletonCanvas, "No body");
   clearSkeleton(faceSkeletonCtx, faceSkeletonCanvas, "No face");
   clearSkeleton(leftHandSkeletonCtx, leftHandSkeletonCanvas, "No left hand");
@@ -1204,8 +1517,10 @@ async function playLoadedVideo() {
 
   try {
     await videoElement.play();
-    playVideoButton.textContent = "Pause";
-    setStatus("Video playing. Mushy is following detected motion.");
+    applyPlaybackSpeed();
+    syncPlayButtonState();
+    updateVideoFrameMeta();
+    setStatus(`Video playing at ${playbackSpeedValueEl?.textContent || "100%"}. Mushy is following detected motion.`);
     scheduleVideoLoop();
   } catch (error) {
     setStatus(`Video playback error: ${error.message || "could not play file"}`, "danger");
@@ -1214,7 +1529,8 @@ async function playLoadedVideo() {
 
 function pauseLoadedVideo() {
   stopVideoPlayback();
-  playVideoButton.textContent = "Play / Pause";
+  syncPlayButtonState();
+  updateVideoFrameMeta();
   setStatus("Video paused.");
 }
 
@@ -1222,6 +1538,7 @@ async function restartLoadedVideo() {
   if (!videoLoaded) return;
   videoElement.currentTime = 0;
   resetDetection();
+  syncVideoScrubControls();
   await processCurrentFrame();
   await playLoadedVideo();
 }
@@ -1246,6 +1563,7 @@ function loadVideoFile(file) {
   videoObjectUrl = URL.createObjectURL(file);
   videoElement.muted = true;
   videoElement.loop = Boolean(loopVideoToggle?.checked);
+  applyPlaybackSpeed();
   videoElement.srcObject = null;
   videoElement.src = videoObjectUrl;
   videoElement.load();
@@ -1395,7 +1713,9 @@ function bindEvents() {
     videoLoaded = true;
     syncSourceUI();
     setStatus("Video loaded. Press Play / Pause to start tracking.");
+    syncVideoScrubControls();
     await processCurrentFrame();
+    updateVideoFrameMeta();
   });
 
   videoElement.addEventListener("error", () => {
@@ -1417,7 +1737,8 @@ function bindEvents() {
     if (sourceSelect.value !== "video") return;
 
     cancelVideoLoop();
-    playVideoButton.textContent = "Play / Pause";
+    syncPlayButtonState();
+    updateVideoFrameMeta();
     setStatus("Video ended. Restart it to run tracking again.");
   });
 
@@ -1438,7 +1759,51 @@ function bindEvents() {
     setStatus(`Video loop: ${loopVideoToggle.checked ? "on" : "off"}.`);
   });
 
+  playbackSpeedInput?.addEventListener("input", () => {
+    applyPlaybackSpeed(Number(playbackSpeedInput.value));
+    updateVideoFrameMeta();
+    setStatus(`Playback speed: ${playbackSpeedValueEl?.textContent || "100%"}.`);
+  });
+
+  videoScrubInput?.addEventListener("pointerdown", () => {
+    if (videoScrubInput.disabled) return;
+    videoScrubbing = true;
+    stopVideoPlayback();
+    syncPlayButtonState();
+  });
+
+  videoScrubInput?.addEventListener("input", async () => {
+    if (videoScrubInput.disabled) return;
+    videoScrubbing = true;
+    const frame = Number(videoScrubInput.value);
+    if (videoScrubValueEl) videoScrubValueEl.textContent = String(frame);
+    videoElement.currentTime = Math.min(
+      frameToTime(frame),
+      Math.max(videoElement.duration - 0.001, 0)
+    );
+    await processCurrentFrame();
+  });
+
+  videoScrubInput?.addEventListener("change", async () => {
+    if (videoScrubInput.disabled) return;
+    videoScrubbing = false;
+    await seekVideoFrame(Number(videoScrubInput.value), { playAfter: true });
+  });
+
+  videoElement.addEventListener("loadedmetadata", () => {
+    if (sourceSelect.value !== "video") return;
+    syncVideoScrubControls();
+  });
+
+  videoElement.addEventListener("timeupdate", () => {
+    if (sourceSelect.value !== "video" || videoScrubbing || !videoLoaded) return;
+    syncVideoScrubControls();
+    updateVideoFrameMeta();
+  });
+
   refreshModelsButton?.addEventListener("click", async () => {
+    setStatus("Scanning body models...", "warning");
+    await rescanBodyModels();
     setStatus("Refreshing model gallery...", "warning");
     modelGallery?.dispose();
     await initModelGallery();
@@ -1502,6 +1867,8 @@ async function initModelGallery() {
     faceMount: faceModelGalleryEl,
     heroMount: riggedModelMountEl,
     riggedModelMeta: riggedModelMetaEl,
+    riggedModelSelect: riggedModelSelectEl,
+    riggedBadge: riggedBadgeEl,
     driverName: driverNameEl,
     driverMeta: driverMetaEl,
     driverAnimSelect: driverAnimSelectEl,
@@ -1522,6 +1889,7 @@ function loadVideoURL(url) {
   clearVideoObjectUrl();
   videoElement.muted = true;
   videoElement.loop = Boolean(loopVideoToggle?.checked);
+  applyPlaybackSpeed();
   videoElement.srcObject = null;
   videoElement.src = url;
   videoElement.load();
@@ -1549,21 +1917,28 @@ function loadImageURL(url, name = "image") {
 
 function init() {
   bindEvents();
+  applyPlaybackSpeed();
   syncSourceUI();
   refreshRawPanel();
+  const rawPlayer = document.querySelector(".viz-card--raw .tile-player");
   const stageResizeObserver = new ResizeObserver(() => {
+    syncVizPlayerLayout();
     if (getFrameSource()) {
       processCurrentFrame();
     } else {
       refreshRawPanel();
     }
   });
-  stageResizeObserver.observe(canvasElement);
+  if (rawPlayer) {
+    stageResizeObserver.observe(rawPlayer);
+  } else {
+    stageResizeObserver.observe(canvasElement);
+  }
   if (skeletonResizeObserver) skeletonResizeObserver.disconnect();
   skeletonResizeObserver = new ResizeObserver(() => {
     if (latestResults) updateKeypointsPanel();
   });
-  [bodySkeletonCanvas, faceSkeletonCanvas, leftHandSkeletonCanvas, rightHandSkeletonCanvas].forEach(
+  [fullSkeletonCanvas, bodySkeletonCanvas, faceSkeletonCanvas, leftHandSkeletonCanvas, rightHandSkeletonCanvas].forEach(
     (canvas) => skeletonResizeObserver.observe(canvas)
   );
   window.__loadVideoURL = loadVideoURL;
@@ -1584,20 +1959,31 @@ function init() {
     return;
   }
 
-  setStatus("Loading models... first run can take a few seconds.", "warning");
+  bootApp();
+}
+
+async function bootApp() {
+  setStatus("Loading model gallery...", "warning");
   retryButton.disabled = true;
+
+  let galleryReady = false;
+  try {
+    await initModelGallery();
+    galleryReady = true;
+  } catch (error) {
+    console.error(error);
+    setStatus(`Model gallery failed to load: ${error.message || "check models/registry.json"}`, "danger");
+  }
+
+  setStatus("Loading MediaPipe... first run can take a few seconds.", "warning");
   setupModels();
-  initModelGallery()
-    .catch((error) => {
-      console.error(error);
-      setStatus("Model gallery failed to load. Check public/models/registry.json.", "danger");
-    })
-    .finally(() => {
-      syncSourceUI();
-      refreshRawPanel();
-      setModelsLoaded(true);
-      setStatus("Ready. Click Start Camera or load an image/video file to begin.", "success");
-    });
+  syncSourceUI();
+  refreshRawPanel();
+  syncVizPlayerLayout();
+  setModelsLoaded(galleryReady);
+  if (galleryReady) {
+    setStatus("Ready. Click Start Camera or load an image/video file to begin.", "success");
+  }
 }
 
 window.addEventListener("load", init);

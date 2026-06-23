@@ -29,25 +29,30 @@ use the media file picker with a video or image.
 
 ## Important Files
 
-- `src/app.js` — MediaPipe pipeline, camera/video handling, keypoint tables, JSON export.
-- `src/avatar.js` — procedural Mushy rig and reusable `OneEuro` filter.
-- `src/glbAvatar.js` — `CharacterAvatar`: GLB loader, pose retargeting, animation clips.
-- `src/modelGallery.js` — body/face model card UI; drives all loaded rigs from one pose.
-- `src/modelRegistry.js` — loads `registry.json` and probes which GLB files exist.
-- `public/models/registry.json` — catalog of body/face model slots.
-- `public/models/body/` — drop Meshy/custom body GLBs here (**gitignored**).
+- `src/app.js` — MediaPipe pipeline, 2D skeleton panes, video frame scrubber, layout sync, JSON export.
+- `src/avatar.js` — `MushyAvatar`, `OneEuro` filter, hero letterbox viewport, `frameBodyCamera`.
+- `src/mushyModelAvatar.js` — GLB skinned on Mushy root; hero + gallery body cards use this.
+- `src/poseSkeleton.js` — shared `mapPoseLandmark`, `MUSHY_HIP_Y` / `MUSHY_FOOT_Y`.
+- `src/skeletonGraph.js` — pose connections, feet, neck bridge for 2D panes.
+- `src/mixamoRig.js` — `MIXAMO_BONE_MAP`, `MESHY_BONE_MAP`, bone lookup.
+- `src/modelGallery.js` — hero rig mount, body/face cards, primary model localStorage.
+- `src/modelRegistry.js` — loads `registry.json`, body manifest scan, GLB availability probe.
+- `src/glbAvatar.js` — legacy `CharacterAvatar`; **not used by hero gallery** (candidate to remove).
+- `src/faceRig.js` — face landmark rig solver (2D/3D head; GLB face retarget TBD).
+- `public/models/registry.json` — bundled models + `bodyOverrides` for Meshy filenames.
+- `public/models/body/` — drop Meshy/custom body GLBs (**gitignored**); auto-scanned at build.
 - `public/models/face/` — drop face GLBs here (**gitignored**).
 - `public/models/character.glb` — bundled Mixamo Xbot (committed).
-- `index.html` — full-width media stage + Live Keypoints & Models inspector.
+- `index.html` — sidebar + 7-column analysis grid + model dock.
 - `public/mediapipe/` — vendored MediaPipe Holistic runtime.
 - `HANDOFF.md`, `TODO.md` — handoff context and open work.
 
 ## Adding a body model (Meshy workflow)
 
 1. In Meshy: rig character, add animations, download **GLB → All animations → single file**.
-2. Save as e.g. `public/models/body/meshy-01.glb` (filename must match `registry.json`).
-3. Optionally add a slot in `public/models/registry.json` under `body`.
-4. In the app, click **Refresh Models** (or reload). Card shows **Ready** + animation list.
+2. Save to `public/models/body/` with any filename (e.g. `my-hero.glb`).
+3. Optionally add display name / rig / default clip in `public/models/registry.json` under `bodyOverrides` keyed by filename.
+4. In the app, click **Refresh Models** (or reload). Every `.glb` in `body/` appears in the gallery and hero dropdown.
 
 User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 
@@ -55,19 +60,22 @@ User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 
 - MediaPipe is local under `public/mediapipe` (no CDN).
 - Camera uses native `getUserMedia` + `requestAnimationFrame`, but does not auto-start.
-- Media file mode supports `video/*` playback and one-frame `image/*` still processing.
+- Media file mode supports `video/*` playback, **frame scrubber** (30 fps), and one-frame `image/*`.
 - `modelComplexity` is `1` → requires `pose_landmark_full.tflite`.
-- 3D Character `CAL`: `{ sx: 1, sy: -1, sz: -0.4, swapLR: false }`.
+- Hero GLB pose = Mushy `mapPoseLandmark` points + bone `aimSegment` (not legacy CAL / `glbAvatar.js`).
+- Meshy models hold **bind pose on load**; pick animation from dropdown to preview a clip.
+- Panel player heights sync to raw video tile via `--viz-player-height`; hero 3D letterboxes to `--viz-aspect`.
 - Dev hooks: `window.__avatar`, `window.__modelGallery`, `window.__loadVideoURL`,
-  `window.__playVideo`, `window.__processFrame`, `window.__video`.
+  `window.__playVideo`, `window.__processFrame`, `window.__video`, `window.__image`.
 
 ## Verification Checklist
 
 - `npm run build` passes.
 - `npm audit --audit-level=low` reports 0 vulnerabilities.
 - `npm run start` → http://127.0.0.1:5180/ loads and tracks.
-- Body model gallery shows Mushy + Xbot; Meshy slots show **Awaiting file** until GLB added.
-- Live Keypoints panel + JSON export still work.
+- Body model gallery shows Mushy + bundled Xbot + scanned `body/*.glb` files.
+- Hero **Rigged Model** column tracks with video; panels align in height and header row.
+- Live keypoint tables + JSON export still work.
 
 ## Deployment
 
