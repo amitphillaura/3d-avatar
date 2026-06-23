@@ -773,8 +773,9 @@ function formatLabel(name) {
 function updateTrackingFooters(exportData) {
   const bodyActive = Boolean(exportData.body);
   const faceActive = Boolean(exportData.face);
-  const leftActive = Boolean(latestResults?.leftHandLandmarks?.length);
-  const rightActive = Boolean(latestResults?.rightHandLandmarks?.length);
+  // Swap: MediaPipe "right" landmark = person's left hand (front-facing camera/video)
+  const leftActive = Boolean(latestResults?.rightHandLandmarks?.length);
+  const rightActive = Boolean(latestResults?.leftHandLandmarks?.length);
 
   if (bodyTrackingMetaEl) {
     bodyTrackingMetaEl.textContent = bodyActive
@@ -1013,10 +1014,13 @@ function drawSingleHandSkeleton(ctx, canvas, landmarks, message, color) {
 }
 
 function drawLeftHandSkeleton() {
+  // MediaPipe labels hands from the camera's POV: "right" landmark = person's left hand
+  // (they're facing the camera so their left is on our right). Swap here so the panel
+  // labelled "Left Hand" actually shows the person's left hand.
   drawSingleHandSkeleton(
     leftHandSkeletonCtx,
     leftHandSkeletonCanvas,
-    latestResults?.leftHandLandmarks,
+    latestResults?.rightHandLandmarks,
     "No left hand",
     "#ff7bd5"
   );
@@ -1026,7 +1030,7 @@ function drawRightHandSkeleton() {
   drawSingleHandSkeleton(
     rightHandSkeletonCtx,
     rightHandSkeletonCanvas,
-    latestResults?.rightHandLandmarks,
+    latestResults?.leftHandLandmarks,
     "No right hand",
     "#59a6ff"
   );
