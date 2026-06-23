@@ -100,6 +100,9 @@ let autoCameraTimer = null;
 let isProcessingFrame = false;
 let videoLoaded = false;
 let videoScrubbing = false;
+// Whether playback was running when the user grabbed the scrub slider. Drives whether we
+// resume on release: scrubbing while paused must STAY paused (play only via the button).
+let wasPlayingBeforeScrub = false;
 
 const VIDEO_SCRUB_FPS = 30;
 let imageLoaded = false;
@@ -1836,6 +1839,7 @@ function bindEvents() {
 
   videoScrubInput?.addEventListener("pointerdown", () => {
     if (videoScrubInput.disabled) return;
+    wasPlayingBeforeScrub = videoLoaded && !videoElement.paused && !videoElement.ended;
     videoScrubbing = true;
     stopVideoPlayback();
     syncPlayButtonState();
@@ -1843,6 +1847,11 @@ function bindEvents() {
 
   videoScrubInput?.addEventListener("input", async () => {
     if (videoScrubInput.disabled) return;
+    // Keyboard scrubbing (arrow keys) skips pointerdown — capture the play state here on
+    // the first input of a session so release doesn't auto-resume a paused video.
+    if (!videoScrubbing) {
+      wasPlayingBeforeScrub = videoLoaded && !videoElement.paused && !videoElement.ended;
+    }
     videoScrubbing = true;
     const frame = Number(videoScrubInput.value);
     if (videoScrubValueEl) videoScrubValueEl.textContent = String(frame);
@@ -1856,7 +1865,8 @@ function bindEvents() {
   videoScrubInput?.addEventListener("change", async () => {
     if (videoScrubInput.disabled) return;
     videoScrubbing = false;
-    await seekVideoFrame(Number(videoScrubInput.value), { playAfter: true });
+    // Only resume if we were playing when the drag began; scrubbing while paused stays paused.
+    await seekVideoFrame(Number(videoScrubInput.value), { playAfter: wasPlayingBeforeScrub });
   });
 
   videoElement.addEventListener("loadedmetadata", () => {
