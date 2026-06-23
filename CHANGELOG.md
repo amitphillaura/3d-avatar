@@ -2,6 +2,19 @@
 
 ## Unreleased — review fixes & media improvements
 
+### Current UI handoff
+- **Four-column analysis grid.** The current uncommitted UI iteration is a 3440×1440
+  no-scroll grid with four equal columns: Raw Camera/Video, Head, Body, and Hands.
+- **In-column data.** Head, Body, and Hands tables now live inside their matching
+  columns instead of a separate final Tables column.
+- **In-column model cards.** Face model cards live in the Head column, Body model cards
+  live in the Body column, and the Hands column has a placeholder for future hand model
+  slots.
+- **Equal player geometry.** Raw media, Head, Body, and Hands player/skeleton tiles share
+  the same 16:9 tile sizing, while source media is still rendered with contain/letterbox
+  aspect-ratio preservation.
+- **Control semantics.** Camera is a Start/Stop button and video has a Loop toggle.
+
 ### Fixed
 - **Model gallery false-positive availability.** Missing Meshy/face GLBs were probed
   with a `HEAD` request that returned Vite's `index.html` (HTTP 200), so empty slots

@@ -40,8 +40,15 @@ Do **not** re-enable GitHub Pages unless the user asks.
 
 ## UI layout
 
-1. **Top** — controls + full-width media canvas. Camera is opt-in; media picker accepts images and videos.
-2. **Live Keypoints & Models** — body/face skeletons, tables, horizontal model gallery.
+1. **Top** — compact controls. Camera is opt-in and uses a **Start/Stop Camera** button.
+   Media picker accepts images and videos; video has a **Loop video** toggle.
+2. **Main analysis grid** — four equal 16:9 player columns on a 3440×1440 target:
+   **Raw Camera/Video**, **Head**, **Body**, **Hands**. The raw media column supports a
+   skeleton-overlay toggle; all player tiles preserve media aspect ratio with letterbox
+   rendering.
+3. **In-column data/models** — Head/Body/Hands tables live in their matching columns.
+   Face model cards live in Head, Body model cards live in Body, and Hands has a
+   placeholder for future hand-model slots.
 
 ## Model library
 

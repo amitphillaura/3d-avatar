@@ -57,59 +57,118 @@
             </select>
           </label>
 
+          <label class="toggle-field">
+            <input id="overlaySkeleton" type="checkbox" checked />
+            <span>Overlay skeleton</span>
+          </label>
+
+          <label class="toggle-field">
+            <input id="loopVideo" type="checkbox" />
+            <span>Loop video</span>
+          </label>
+
           <div class="button-row" aria-label="Export controls">
             <button id="copyKeypoints" type="button" disabled>Copy JSON</button>
-            <button id="playVideo" type="button" disabled>Play Video</button>
-            <button id="restartVideo" type="button" disabled>Restart Video</button>
-            <button id="downloadSnapshot" type="button">Download Snapshot</button>
+            <button id="playVideo" type="button" disabled>Play</button>
+            <button id="restartVideo" type="button" disabled>Restart</button>
+            <button id="downloadSnapshot" type="button">Snapshot</button>
             <button id="retryCamera" type="button">Start Camera</button>
-            <button id="refreshModels" type="button">Refresh Models</button>
+            <button id="refreshModels" type="button">Refresh</button>
           </div>
         </section>
 
-        <section class="stage-panel stage-panel--solo" aria-label="Annotated media output">
-          <canvas id="output" width="1280" height="720" aria-label="Annotated webcam output"></canvas>
-          <div class="stage-footer">
-            <span id="frameMeta">Waiting for camera...</span>
-            <span>Normalized coordinates: 0-1</span>
-          </div>
-        </section>
-
-        <section class="inspector" aria-label="Live keypoints and models">
-          <div class="inspector-header">
-            <h2>Live Keypoints &amp; Models</h2>
-            <span id="detectionState">Idle</span>
-          </div>
-
-          <div class="kp-group body-group">
-            <div class="kp-group-top">
-              <h3>Body</h3>
-              <p class="kp-group-hint">Click a model card to set the dev-hook primary. All loaded body models mirror your pose.</p>
+        <section class="analysis-grid" aria-label="Live media and skeletal breakdown">
+          <article class="media-card media-card--primary column-card" aria-label="Full camera or video feed">
+            <header class="tile-header">
+              <div>
+                <span class="tile-kicker">Column 1</span>
+                <h2>Raw Camera / Video</h2>
+              </div>
+              <span class="tile-pill" id="frameMeta">Waiting for camera...</span>
+            </header>
+            <div class="tile-player">
+              <canvas id="output" width="1280" height="720" aria-label="Full media output"></canvas>
             </div>
-            <div class="kp-data-row">
-              <canvas id="bodySkeleton" class="kp-skel" width="240" height="320"
-                aria-label="Body skeleton preview"></canvas>
-              <div id="bodyTable" class="kp-table-wrap">Waiting for detection...</div>
+            <div class="tile-meta-row">
+              <span id="detectionState">Idle</span>
+              <span>Raw feed · overlay toggle controls skeleton-on-video only</span>
             </div>
-            <div id="bodyModelGallery" class="model-gallery" aria-label="Body model gallery"></div>
-          </div>
+          </article>
 
-          <div class="kp-group face-group">
-            <div class="kp-group-top">
-              <h3>Face</h3>
-              <p class="kp-group-hint">Drop face GLBs in <code>public/models/face/</code> and register them in <code>registry.json</code>.</p>
+          <article class="media-card column-card" aria-label="Head preview">
+            <header class="tile-header">
+              <div>
+                <span class="tile-kicker">Column 2</span>
+                <h2>Head</h2>
+              </div>
+              <span class="tile-pill">Face mesh</span>
+            </header>
+            <div class="tile-player">
+              <canvas id="faceSkeleton" class="focus-canvas" width="420" height="520"
+                aria-label="Head and face mesh preview"></canvas>
             </div>
-            <div class="kp-data-row">
-              <canvas id="faceSkeleton" class="kp-skel" width="240" height="320"
-                aria-label="Face mesh preview"></canvas>
+            <section class="table-panel" aria-label="Head keypoint table">
+              <h3>Head Table</h3>
               <div id="faceTable" class="kp-table-wrap">Waiting for detection...</div>
-            </div>
-            <div id="faceModelGallery" class="model-gallery" aria-label="Face model gallery"></div>
-          </div>
+            </section>
+            <section class="embedded-models" aria-label="Face model gallery section">
+              <div class="embedded-models-header">
+                <h3>Head Models</h3>
+                <span>Face GLBs</span>
+              </div>
+              <div id="faceModelGallery" class="model-gallery" aria-label="Face model gallery"></div>
+            </section>
+          </article>
 
-          <p class="inspector-foot">
-            Body exports: <code>public/models/body/</code> · Registry: <code>public/models/registry.json</code>
-          </p>
+          <article class="media-card column-card" aria-label="Body preview">
+            <header class="tile-header">
+              <div>
+                <span class="tile-kicker">Column 3</span>
+                <h2>Body</h2>
+              </div>
+              <span class="tile-pill">Pose rig</span>
+            </header>
+            <div class="tile-player">
+              <canvas id="bodySkeleton" class="focus-canvas" width="420" height="520"
+                aria-label="Body skeleton preview"></canvas>
+            </div>
+            <section class="table-panel" aria-label="Body keypoint table">
+              <h3>Body Table</h3>
+              <div id="bodyTable" class="kp-table-wrap">Waiting for detection...</div>
+            </section>
+            <section class="embedded-models" aria-label="Body model gallery section">
+              <div class="embedded-models-header">
+                <h3>Body Models</h3>
+                <span>Live rigs</span>
+              </div>
+              <div id="bodyModelGallery" class="model-gallery" aria-label="Body model gallery"></div>
+            </section>
+          </article>
+
+          <article class="media-card column-card" aria-label="Hands preview">
+            <header class="tile-header">
+              <div>
+                <span class="tile-kicker">Column 4</span>
+                <h2>Hands</h2>
+              </div>
+              <span class="tile-pill">Left + right</span>
+            </header>
+            <div class="tile-player">
+              <canvas id="handsSkeleton" class="focus-canvas" width="420" height="520"
+                aria-label="Hand skeleton preview"></canvas>
+            </div>
+            <section class="table-panel" aria-label="Hands keypoint table">
+              <h3>Hands Table</h3>
+              <div id="handsTable" class="kp-table-wrap">Waiting for detection...</div>
+            </section>
+            <section class="embedded-models embedded-models--empty" aria-label="Hand models placeholder">
+              <div class="embedded-models-header">
+                <h3>Hand Models</h3>
+                <span>Not wired</span>
+              </div>
+              <p class="empty-note">Hand model slots can be added here later.</p>
+            </section>
+          </article>
         </section>
       </section>
     </main>

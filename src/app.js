@@ -16,12 +16,17 @@ const sourceSelect = document.getElementById("source");
 const videoFileInput = document.getElementById("videoFile");
 const modeSelect = document.getElementById("mode");
 const visualStyleSelect = document.getElementById("visualStyle");
+const overlaySkeletonToggle = document.getElementById("overlaySkeleton");
+const loopVideoToggle = document.getElementById("loopVideo");
 const bodyTableEl = document.getElementById("bodyTable");
 const faceTableEl = document.getElementById("faceTable");
+const handsTableEl = document.getElementById("handsTable");
 const bodySkeletonCanvas = document.getElementById("bodySkeleton");
 const faceSkeletonCanvas = document.getElementById("faceSkeleton");
+const handsSkeletonCanvas = document.getElementById("handsSkeleton");
 const bodySkeletonCtx = bodySkeletonCanvas.getContext("2d");
 const faceSkeletonCtx = faceSkeletonCanvas.getContext("2d");
+const handsSkeletonCtx = handsSkeletonCanvas.getContext("2d");
 const copyButton = document.getElementById("copyKeypoints");
 const playVideoButton = document.getElementById("playVideo");
 const restartVideoButton = document.getElementById("restartVideo");
@@ -48,6 +53,7 @@ let isProcessingFrame = false;
 let videoLoaded = false;
 let imageLoaded = false;
 let currentImageName = "";
+let currentMediaRect = null;
 
 const BODY_GLOW_PATHS = [
   [15, 13, 11, 12, 14, 16],
@@ -87,6 +93,15 @@ const FACE_LANDMARKS = {
   chin: 152
 };
 
+const HAND_LANDMARKS = {
+  wrist: 0,
+  thumb_tip: 4,
+  index_tip: 8,
+  middle_tip: 12,
+  ring_tip: 16,
+  pinky_tip: 20
+};
+
 function hasMediaPipeGlobals() {
   return Boolean(
     window.Holistic &&
@@ -110,10 +125,67 @@ function getSourceLabel() {
   return "webcam feed";
 }
 
-function toCanvasPoint(landmark) {
+function resizeCanvasToDisplay(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width || canvas.clientWidth || canvas.width));
+  const height = Math.max(1, Math.round(rect.height || canvas.clientHeight || canvas.height));
+
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+}
+
+function resizeOutputCanvasToDisplay() {
+  resizeCanvasToDisplay(canvasElement);
+}
+
+function containRect(sourceWidth, sourceHeight, targetWidth, targetHeight) {
+  if (!sourceWidth || !sourceHeight || !targetWidth || !targetHeight) {
+    return { x: 0, y: 0, width: targetWidth, height: targetHeight };
+  }
+
+  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+
   return {
-    x: landmark.x * canvasElement.width,
-    y: landmark.y * canvasElement.height
+    x: (targetWidth - width) / 2,
+    y: (targetHeight - height) / 2,
+    width,
+    height
+  };
+}
+
+function projectLandmarkToCanvas(landmark) {
+  const rect = currentMediaRect || {
+    x: 0,
+    y: 0,
+    width: canvasElement.width,
+    height: canvasElement.height
+  };
+
+  return {
+    ...landmark,
+    x: (rect.x + landmark.x * rect.width) / canvasElement.width,
+    y: (rect.y + landmark.y * rect.height) / canvasElement.height
+  };
+}
+
+function projectLandmarksToCanvas(landmarks) {
+  return landmarks?.map((landmark) => (landmark ? projectLandmarkToCanvas(landmark) : landmark));
+}
+
+function toCanvasPoint(landmark) {
+  const rect = currentMediaRect || {
+    x: 0,
+    y: 0,
+    width: canvasElement.width,
+    height: canvasElement.height
+  };
+  return {
+    x: rect.x + landmark.x * rect.width,
+    y: rect.y + landmark.y * rect.height
   };
 }
 
@@ -243,13 +315,31 @@ function compactFaceLandmarks(landmarks) {
   return face;
 }
 
+function compactHandLandmarks(landmarks, side) {
+  const hand = {};
+
+  Object.entries(HAND_LANDMARKS).forEach(([name, index]) => {
+    if (!landmarks?.[index]) return;
+    const point = landmarks[index];
+
+    hand[`${side}_${name}`] = {
+      x: Number(point.x.toFixed(4)),
+      y: Number(point.y.toFixed(4)),
+      z: Number((point.z || 0).toFixed(4))
+    };
+  });
+
+  return hand;
+}
+
 function buildCurrentExportData({ fullFace = true } = {}) {
   const mode = modeSelect.value;
   const exportData = {
     timestamp: new Date().toISOString(),
     mode,
     body: null,
-    face: null
+    face: null,
+    hands: null
   };
 
   if ((mode === "body" || mode === "both") && latestResults?.poseLandmarks) {
@@ -268,11 +358,19 @@ function buildCurrentExportData({ fullFace = true } = {}) {
     exportData.face_landmark_count = landmarks.length;
   }
 
+  const hands = {
+    ...compactHandLandmarks(latestResults?.leftHandLandmarks, "left"),
+    ...compactHandLandmarks(latestResults?.rightHandLandmarks, "right")
+  };
+  if (Object.keys(hands).length) {
+    exportData.hands = hands;
+  }
+
   return exportData;
 }
 
 function hasDetectedData(data) {
-  return Boolean(data.body || data.face);
+  return Boolean(data.body || data.face || data.hands);
 }
 
 function formatLabel(name) {
@@ -332,6 +430,7 @@ function fitLandmarks(points, width, height, pad) {
 }
 
 function clearSkeleton(ctx, canvas, message) {
+  resizeCanvasToDisplay(canvas);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "rgba(154,164,180,0.5)";
   ctx.font = "12px system-ui, sans-serif";
@@ -342,6 +441,7 @@ function clearSkeleton(ctx, canvas, message) {
 function drawBodySkeleton() {
   const ctx = bodySkeletonCtx;
   const canvas = bodySkeletonCanvas;
+  resizeCanvasToDisplay(canvas);
   const lm = latestResults?.poseLandmarks;
   if (!lm) {
     clearSkeleton(ctx, canvas, "No body");
@@ -376,6 +476,7 @@ function drawBodySkeleton() {
 function drawFaceSkeleton() {
   const ctx = faceSkeletonCtx;
   const canvas = faceSkeletonCanvas;
+  resizeCanvasToDisplay(canvas);
   const face = latestResults?.faceLandmarks;
   if (!face) {
     clearSkeleton(ctx, canvas, "No face");
@@ -393,6 +494,50 @@ function drawFaceSkeleton() {
   });
 }
 
+function drawHandSet(ctx, project, landmarks, color) {
+  if (!landmarks) return;
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.3;
+  ctx.lineCap = "round";
+  (window.HAND_CONNECTIONS || []).forEach(([a, b]) => {
+    if (!landmarks[a] || !landmarks[b]) return;
+    const p = project(landmarks[a]);
+    const q = project(landmarks[b]);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(q.x, q.y);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = "#ffffff";
+  landmarks.forEach((point, index) => {
+    const p = project(point);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, [0, 4, 8, 12, 16, 20].includes(index) ? 3.4 : 2.4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawHandsSkeleton() {
+  const ctx = handsSkeletonCtx;
+  const canvas = handsSkeletonCanvas;
+  resizeCanvasToDisplay(canvas);
+  const left = latestResults?.leftHandLandmarks;
+  const right = latestResults?.rightHandLandmarks;
+  const all = [...(left || []), ...(right || [])];
+
+  if (!all.length) {
+    clearSkeleton(ctx, canvas, "No hands");
+    return;
+  }
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const project = fitLandmarks(all, canvas.width, canvas.height, 28);
+  drawHandSet(ctx, project, left, "#ff7bd5");
+  drawHandSet(ctx, project, right, "#59a6ff");
+}
+
 function updateKeypointsPanel() {
   const exportData = buildCurrentExportData({ fullFace: false });
 
@@ -404,8 +549,13 @@ function updateKeypointsPanel() {
     ? buildLandmarkTable(exportData.face, false)
     : '<p class="kp-empty">No face detected yet...</p>';
 
+  handsTableEl.innerHTML = exportData.hands
+    ? buildLandmarkTable(exportData.hands, false)
+    : '<p class="kp-empty">No hands detected yet...</p>';
+
   drawBodySkeleton();
   drawFaceSkeleton();
+  drawHandsSkeleton();
 
   if (!hasDetectedData(exportData)) {
     copyButton.disabled = true;
@@ -417,34 +567,67 @@ function updateKeypointsPanel() {
   const labels = [];
   if (exportData.body) labels.push("Body");
   if (exportData.face) labels.push("Face");
+  if (exportData.hands) labels.push("Hands");
   setDetectionState(labels.join(" + "));
 }
 
 function drawResults(image) {
   const mode = modeSelect.value;
+  resizeOutputCanvasToDisplay();
+  const { width: sourceWidth, height: sourceHeight } = getFrameDimensions(image);
+  currentMediaRect = containRect(
+    sourceWidth,
+    sourceHeight,
+    canvasElement.width,
+    canvasElement.height
+  );
+  const displayPoseLandmarks = projectLandmarksToCanvas(latestResults?.poseLandmarks);
+  const displayFaceLandmarks = projectLandmarksToCanvas(latestResults?.faceLandmarks);
+
   canvasCtx.save();
   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-  canvasCtx.drawImage(image, 0, 0, canvasElement.width, canvasElement.height);
+  canvasCtx.fillStyle = "#020306";
+  canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+  canvasCtx.drawImage(
+    image,
+    currentMediaRect.x,
+    currentMediaRect.y,
+    currentMediaRect.width,
+    currentMediaRect.height
+  );
 
-  if (visualStyleSelect.value === "glow") {
+  if (currentMediaRect.x > 0 || currentMediaRect.y > 0) {
+    canvasCtx.strokeStyle = "rgba(255,255,255,0.08)";
+    canvasCtx.lineWidth = 1;
+    canvasCtx.strokeRect(
+      currentMediaRect.x + 0.5,
+      currentMediaRect.y + 0.5,
+      currentMediaRect.width - 1,
+      currentMediaRect.height - 1
+    );
+  }
+
+  const showOverlay = overlaySkeletonToggle?.checked ?? true;
+
+  if (showOverlay && visualStyleSelect.value === "glow") {
     collectGlowTrails(mode);
     drawGlowTrails();
   }
 
-  if ((mode === "body" || mode === "both") && latestResults?.poseLandmarks) {
-    window.drawConnectors(canvasCtx, latestResults.poseLandmarks, window.POSE_CONNECTIONS, {
+  if (showOverlay && (mode === "body" || mode === "both") && displayPoseLandmarks) {
+    window.drawConnectors(canvasCtx, displayPoseLandmarks, window.POSE_CONNECTIONS, {
       color: visualStyleSelect.value === "glow" ? "rgba(0,255,180,0.65)" : "#00ff00",
       lineWidth: visualStyleSelect.value === "glow" ? 2 : 4
     });
-    window.drawLandmarks(canvasCtx, latestResults.poseLandmarks, {
+    window.drawLandmarks(canvasCtx, displayPoseLandmarks, {
       color: visualStyleSelect.value === "glow" ? "rgba(255,255,255,0.85)" : "#ff3333",
       lineWidth: 2,
       radius: visualStyleSelect.value === "glow" ? 3 : 5
     });
   }
 
-  if ((mode === "face" || mode === "both") && latestResults?.faceLandmarks) {
-    const landmarks = latestResults.faceLandmarks;
+  if (showOverlay && (mode === "face" || mode === "both") && displayFaceLandmarks) {
+    const landmarks = displayFaceLandmarks;
     if (visualStyleSelect.value !== "glow") {
       window.drawConnectors(canvasCtx, landmarks, window.FACEMESH_TESSELATION, {
         color: "#00ffff",
@@ -541,8 +724,10 @@ function resetDetection() {
   latestResults = null;
   bodyTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
   faceTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
+  handsTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
   clearSkeleton(bodySkeletonCtx, bodySkeletonCanvas, "No body");
   clearSkeleton(faceSkeletonCtx, faceSkeletonCanvas, "No face");
+  clearSkeleton(handsSkeletonCtx, handsSkeletonCanvas, "No hands");
   copyButton.disabled = true;
   glowTrails = [];
   setDetectionState("Searching");
@@ -625,6 +810,22 @@ function stopCamera() {
   videoElement.srcObject = null;
 }
 
+function syncCameraButton() {
+  retryButton.textContent = cameraInstance ? "Stop Camera" : "Start Camera";
+  retryButton.disabled = false;
+}
+
+function stopCameraAndIdle(message = "Camera stopped.") {
+  stopCamera();
+  syncCameraButton();
+  if (sourceSelect.value === "camera") {
+    initCanvasPlaceholder("Click Start Camera to begin");
+    setStatus(message, "warning");
+    frameMetaEl.textContent = "Camera idle";
+    setDetectionState("Idle");
+  }
+}
+
 function scheduleCameraLoop() {
   cancelCameraLoop();
 
@@ -683,7 +884,7 @@ async function startCamera() {
     cameraInstance = { stream };
     setStatus("Camera active. Move back for full body, closer for face detail.");
     frameMetaEl.textContent = "Camera active";
-    retryButton.textContent = "Restart Camera";
+    syncCameraButton();
     scheduleCameraLoop();
   } catch (error) {
     stopCamera();
@@ -694,7 +895,7 @@ async function startCamera() {
     );
     frameMetaEl.textContent = "Camera unavailable";
     setDetectionState("Blocked");
-    retryButton.textContent = "Retry Camera";
+    syncCameraButton();
   }
 }
 
@@ -758,7 +959,7 @@ function loadVideoFile(file) {
 
   videoObjectUrl = URL.createObjectURL(file);
   videoElement.muted = true;
-  videoElement.loop = false;
+  videoElement.loop = Boolean(loopVideoToggle?.checked);
   videoElement.srcObject = null;
   videoElement.src = videoObjectUrl;
   videoElement.load();
@@ -811,7 +1012,7 @@ function switchSource(nextSource) {
   if (nextSource === "camera") {
     stopVideoPlayback();
     retryButton.disabled = false;
-    retryButton.textContent = cameraInstance ? "Restart Camera" : "Start Camera";
+    retryButton.textContent = cameraInstance ? "Stop Camera" : "Start Camera";
     initCanvasPlaceholder("Click Start Camera to begin");
     setStatus("Camera mode ready. Click Start Camera when you want to grant camera access.", "warning");
     frameMetaEl.textContent = "Camera idle";
@@ -886,7 +1087,13 @@ function bindEvents() {
   });
   restartVideoButton.addEventListener("click", restartLoadedVideo);
   snapshotButton.addEventListener("click", downloadSnapshot);
-  retryButton.addEventListener("click", startCamera);
+  retryButton.addEventListener("click", () => {
+    if (cameraInstance) {
+      stopCameraAndIdle();
+    } else {
+      startCamera();
+    }
+  });
   sourceSelect.addEventListener("change", () => switchSource(sourceSelect.value));
   videoFileInput.addEventListener("change", () => {
     const [file] = videoFileInput.files || [];
@@ -933,6 +1140,18 @@ function bindEvents() {
   visualStyleSelect.addEventListener("change", () => {
     glowTrails = [];
     setStatus(`Visual style: ${visualStyleSelect.options[visualStyleSelect.selectedIndex].text}`);
+    processCurrentFrame();
+  });
+
+  overlaySkeletonToggle?.addEventListener("change", () => {
+    glowTrails = [];
+    setStatus(`Main overlay: ${overlaySkeletonToggle.checked ? "on" : "off"}.`);
+    processCurrentFrame();
+  });
+
+  loopVideoToggle?.addEventListener("change", () => {
+    videoElement.loop = loopVideoToggle.checked;
+    setStatus(`Video loop: ${loopVideoToggle.checked ? "on" : "off"}.`);
   });
 
   refreshModelsButton?.addEventListener("click", async () => {
@@ -982,12 +1201,15 @@ function bindEvents() {
 }
 
 function initCanvasPlaceholder(message = "Camera preview will appear here") {
+  resizeOutputCanvasToDisplay();
+  currentMediaRect = null;
   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
   canvasCtx.fillStyle = "#05070a";
   canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
   canvasCtx.fillStyle = "rgba(255,255,255,0.78)";
-  canvasCtx.font = "600 30px system-ui, sans-serif";
+  canvasCtx.font = `600 ${Math.max(18, Math.min(34, canvasElement.width * 0.02))}px system-ui, sans-serif`;
   canvasCtx.textAlign = "center";
+  canvasCtx.textBaseline = "middle";
   canvasCtx.fillText(message, canvasElement.width / 2, canvasElement.height / 2);
 }
 
@@ -1010,7 +1232,7 @@ function loadVideoURL(url) {
   clearImageSource();
   clearVideoObjectUrl();
   videoElement.muted = true;
-  videoElement.loop = true;
+  videoElement.loop = Boolean(loopVideoToggle?.checked);
   videoElement.srcObject = null;
   videoElement.src = url;
   videoElement.load();
@@ -1039,6 +1261,16 @@ function loadImageURL(url, name = "image") {
 function init() {
   bindEvents();
   initCanvasPlaceholder();
+  const stageResizeObserver = new ResizeObserver(() => {
+    if (getFrameSource()) {
+      processCurrentFrame();
+    } else {
+      initCanvasPlaceholder(
+        sourceSelect.value === "camera" ? "Click Start Camera to begin" : "Load media to begin"
+      );
+    }
+  });
+  stageResizeObserver.observe(canvasElement);
   window.__loadVideoURL = loadVideoURL;
   window.__loadImageURL = loadImageURL;
   window.__playVideo = playLoadedVideo;
