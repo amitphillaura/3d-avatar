@@ -26,12 +26,23 @@ const BONES = [
   ["rightShoulder", "rightHip", "side"]
 ];
 
+// Transformer-robot palette — brushed metals, a heroic red/blue chassis, glowing optics.
+const PRIME = {
+  steel: 0x9aa6b4, // arms / shoulders
+  red: 0xc0392b, // chest + torso plating
+  blue: 0x2f6fe0, // hips / legs
+  dark: 0x2a2f3a, // ball joints, neck, panel gaps
+  visor: 0x46e6ff, // glowing eye visor / chest core
+  amber: 0xffc23d // accent lights
+};
+
+// Chunky, faceted (low-segment) metallic limbs read as armored mech struts.
 const BONE_STYLE = {
-  collar: { radius: 0.055, color: 0x7df8ce },
-  hip: { radius: 0.06, color: 0x75a7ff },
-  arm: { radius: 0.045, color: 0xff7bd5 },
-  leg: { radius: 0.052, color: 0x75a7ff },
-  side: { radius: 0.04, color: 0x37e9a8 }
+  collar: { radius: 0.095, color: PRIME.steel },
+  hip: { radius: 0.11, color: PRIME.blue },
+  arm: { radius: 0.08, color: PRIME.steel },
+  leg: { radius: 0.1, color: PRIME.blue },
+  side: { radius: 0.085, color: PRIME.red }
 };
 
 function landmarkVisible(landmark) {
@@ -84,6 +95,28 @@ function makeMaterial(color, roughness = 0.52) {
   });
 }
 
+// Brushed-metal material for robot plating.
+function makeMetal(color, roughness = 0.34) {
+  return new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness: 0.92,
+    emissive: 0x05070b,
+    emissiveIntensity: 0.25
+  });
+}
+
+// Self-lit material for glowing optics / core (reads bright regardless of lighting).
+function makeGlow(color) {
+  return new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.3,
+    metalness: 0,
+    emissive: color,
+    emissiveIntensity: 0.9
+  });
+}
+
 function setCylinderBetween(mesh, start, end) {
   const delta = new THREE.Vector3().subVectors(end, start);
   const length = Math.max(delta.length(), 0.001);
@@ -109,7 +142,7 @@ function containRect(sourceWidth, sourceHeight, targetWidth, targetHeight) {
   };
 }
 
-export class MushyAvatar {
+export class MushyPrime {
   constructor(mount, metaElement, options = {}) {
     this.mount = mount;
     this.metaElement = metaElement;
@@ -158,7 +191,7 @@ export class MushyAvatar {
     this.labelRenderer = null;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x06080e);
+    this.scene.background = new THREE.Color(0x080a12);
 
     this.camera = new THREE.PerspectiveCamera(38, 16 / 9, 0.1, 100);
     this.frameBodyCamera();
@@ -177,8 +210,8 @@ export class MushyAvatar {
     this.createWorld();
     this.createRig();
     this.hands = {
-      left: this.buildHandRig(0xff7bd5),
-      right: this.buildHandRig(0x59a6ff)
+      left: this.buildHandRig(PRIME.steel),
+      right: this.buildHandRig(PRIME.steel)
     };
     this.resize();
 
@@ -353,8 +386,9 @@ export class MushyAvatar {
   }
 
   createRig() {
-    const jointGeometry = new THREE.SphereGeometry(0.078, 20, 20);
-    const jointMaterial = makeMaterial(0xf5fffb, 0.35);
+    // Dark ball-joint pistons tie the armored struts together.
+    const jointGeometry = new THREE.SphereGeometry(0.088, 16, 16);
+    const jointMaterial = makeMetal(PRIME.dark, 0.5);
 
     Object.keys(BODY_POINTS).forEach((name) => {
       const joint = new THREE.Mesh(jointGeometry, jointMaterial);
@@ -370,72 +404,101 @@ export class MushyAvatar {
       });
     });
 
-    // End-caps so wrists read as hands and ankles as feet.
-    const handGeometry = new THREE.SphereGeometry(0.12, 18, 18);
-    const footGeometry = new THREE.SphereGeometry(0.13, 18, 18);
-    const handMaterial = makeMaterial(0xff7bd5, 0.4);
-    const footMaterial = makeMaterial(0x75a7ff, 0.4);
+    // Boxy fists for wrists, flattened boots for ankles.
+    const handMaterial = makeMetal(PRIME.steel, 0.32);
+    const footMaterial = makeMetal(PRIME.dark, 0.42);
     this.caps = {
-      leftWrist: new THREE.Mesh(handGeometry, handMaterial),
-      rightWrist: new THREE.Mesh(handGeometry, handMaterial),
-      leftAnkle: new THREE.Mesh(footGeometry, footMaterial),
-      rightAnkle: new THREE.Mesh(footGeometry, footMaterial)
+      leftWrist: new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.27, 0.27), handMaterial),
+      rightWrist: new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.27, 0.27), handMaterial),
+      leftAnkle: new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.18, 0.44), footMaterial),
+      rightAnkle: new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.18, 0.44), footMaterial)
     };
     Object.values(this.caps).forEach((cap) => {
       cap.visible = false;
       this.root.add(cap);
     });
 
-    // Neck connects the torso/shoulders to the head.
+    // Thick dark neck piston.
     const neckStyle = BONE_STYLE.collar;
     this.neck = new THREE.Mesh(
-      new THREE.CylinderGeometry(neckStyle.radius * 0.7, neckStyle.radius * 0.9, 1, 16),
-      makeMaterial(0xd7fff2, 0.5)
+      new THREE.CylinderGeometry(neckStyle.radius * 0.85, neckStyle.radius, 1, 12),
+      makeMetal(PRIME.dark, 0.45)
     );
     this.neck.visible = false;
     this.root.add(this.neck);
 
+    // Faceted (6-sided) metal struts read as hard-edged mech limbs.
     BONES.forEach(([from, to, variant]) => {
       const style = BONE_STYLE[variant];
-      const geometry = new THREE.CylinderGeometry(style.radius, style.radius, 1, 18);
-      const material = makeMaterial(style.color, 0.44);
+      const geometry = new THREE.CylinderGeometry(style.radius, style.radius, 1, 6);
+      const material = makeMetal(style.color, 0.4);
       const mesh = new THREE.Mesh(geometry, material);
       mesh.visible = false;
       this.root.add(mesh);
       this.bones.push({ from, to, mesh });
     });
 
-    this.torso = new THREE.Mesh(
-      new THREE.SphereGeometry(0.82, 32, 32),
-      new THREE.MeshStandardMaterial({
-        color: 0x1ae7a0,
-        roughness: 0.6,
-        metalness: 0.04,
-        transparent: true,
-        opacity: 0.32,
-        emissive: 0x0ad184,
-        emissiveIntensity: 0.08
-      })
-    );
-    this.torso.scale.set(0.85, 1.15, 0.36);
+    // Boxy red chest plate with a glowing core panel.
+    this.torso = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), makeMetal(PRIME.red, 0.4));
+    this.torso.scale.set(0.9, 1.12, 0.5);
     this.root.add(this.torso);
 
-    this.head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.32, 32, 32),
-      makeMaterial(0xd7fff2, 0.5)
-    );
+    this.chestCore = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.22), makeGlow(PRIME.visor));
+    this.chestCore.position.set(0, 0.1, 0.46);
+    this.torso.add(this.chestCore);
+
+    // Angular box head with a glowing visor + antennae.
+    this.head = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.62, 0.6), makeMetal(PRIME.blue, 0.34));
     this.root.add(this.head);
+    this.buildRobotHead();
+  }
 
-    const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x061018 });
-    this.leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), eyeMaterial);
-    this.rightEye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), eyeMaterial);
+  // Robot face on the box head: recessed faceplate, glowing visor + eye blocks, a chin
+  // grille, side housings, and an antenna pair. All parent to `this.head`, so they follow
+  // its position/rotation/scale exactly like the original Mushy eyes did. The antenna is a
+  // Group named `this.antenna` so the inherited idle wiggle (antenna.rotation.z) sways it.
+  buildRobotHead() {
+    const faceplate = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.36, 0.06), makeMetal(PRIME.dark, 0.42));
+    faceplate.position.set(0, -0.02, 0.3);
+    this.head.add(faceplate);
+
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.1, 0.05), makeGlow(PRIME.visor));
+    visor.position.set(0, 0.06, 0.33);
+    this.head.add(visor);
+
+    const eyeGeometry = new THREE.BoxGeometry(0.11, 0.075, 0.04);
+    const eyeMaterial = makeGlow(0xb6f6ff);
+    this.leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+    this.rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+    this.leftEye.position.set(-0.12, 0.06, 0.35);
+    this.rightEye.position.set(0.12, 0.06, 0.35);
     this.head.add(this.leftEye, this.rightEye);
-    this.leftEye.position.set(-0.105, 0.06, 0.29);
-    this.rightEye.position.set(0.105, 0.06, 0.29);
 
-    const antennaMaterial = new THREE.MeshBasicMaterial({ color: 0x00f0a8 });
-    this.antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.45, 10), antennaMaterial);
-    this.antenna.position.set(0, 0.33, 0);
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.06, 0.04), makeMetal(PRIME.steel, 0.4));
+    grille.position.set(0, -0.16, 0.32);
+    this.head.add(grille);
+
+    const earGeometry = new THREE.BoxGeometry(0.08, 0.24, 0.24);
+    const earMaterial = makeMetal(PRIME.red, 0.4);
+    const leftEar = new THREE.Mesh(earGeometry, earMaterial);
+    const rightEar = new THREE.Mesh(earGeometry, earMaterial);
+    leftEar.position.set(-0.37, 0.04, 0);
+    rightEar.position.set(0.37, 0.04, 0);
+    this.head.add(leftEar, rightEar);
+
+    this.antenna = new THREE.Group();
+    this.antenna.position.set(0, 0.32, 0);
+    const rodMaterial = makeMetal(PRIME.steel, 0.35);
+    const buildAntenna = (sign) => {
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.022, 0.26, 8), rodMaterial);
+      rod.position.set(sign * 0.15, 0.13, -0.02);
+      rod.rotation.z = -sign * 0.35;
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.032, 10, 10), makeGlow(PRIME.amber));
+      tip.position.set(sign * 0.2, 0.26, -0.02);
+      this.antenna.add(rod, tip);
+    };
+    buildAntenna(-1);
+    buildAntenna(1);
     this.head.add(this.antenna);
   }
 
@@ -507,7 +570,7 @@ export class MushyAvatar {
     if (faceActive) parts.push("face rig");
     if (leftActive) parts.push("L hand");
     if (rightActive) parts.push("R hand");
-    this.metaElement.textContent = `Mushy tracking · ${parts.join(" · ")}`;
+    this.metaElement.textContent = `MushyPrime tracking · ${parts.join(" · ")}`;
   }
 
   updateFace(faceLandmarks, media = {}) {
@@ -693,7 +756,7 @@ export class MushyAvatar {
       if (this.latestTrackedAt !== 0) return;
 
       this.activePoints.clear();
-      this.metaElement.textContent = "Mushy waiting for your body pose";
+      this.metaElement.textContent = "MushyPrime waiting for your body pose";
       this.bones.forEach(({ mesh }) => {
         mesh.visible = false;
       });

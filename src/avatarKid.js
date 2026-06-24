@@ -263,11 +263,17 @@ export class MushyKid {
     const next = Boolean(value);
     if (this.showJointLabels === next) return;
     this.showJointLabels = next;
-    if (next) this.ensureJointLabels();
-    else {
+    if (next) {
+      this.ensureJointLabels();
+      if (this.labelRenderer) this.labelRenderer.domElement.style.display = "";
+    } else {
       this.jointLabels.forEach((label) => {
         label.visible = false;
       });
+      // CSS2D labels only update their DOM on render(); once we stop rendering the
+      // overlay (showJointLabels=false) the last-shown labels would freeze on screen.
+      // Hide the whole overlay so toggling off actually clears them.
+      if (this.labelRenderer) this.labelRenderer.domElement.style.display = "none";
     }
     this.applySkeletonVisibility();
   }

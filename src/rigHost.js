@@ -1,11 +1,13 @@
 import { MushyAvatar } from "./avatar.js";
 import { MushyKid } from "./avatarKid.js";
+import { MushyPrime } from "./avatarPrime.js";
 
 // Selectable rig variants. Each clones the same public API (updateTracking, dispose,
 // setShowJointLabels, …) so RigHost can swap one for another without any other changes.
 export const RIG_VARIANTS = {
   mushy: { label: "Mushy", AvatarClass: MushyAvatar },
-  mushyKid: { label: "MushyKid", AvatarClass: MushyKid }
+  mushyKid: { label: "MushyKid", AvatarClass: MushyKid },
+  mushyPrime: { label: "MushyPrime", AvatarClass: MushyPrime }
 };
 
 export const DEFAULT_RIG_VARIANT = "mushy";
