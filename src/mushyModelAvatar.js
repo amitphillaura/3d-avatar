@@ -46,6 +46,56 @@ const FINGER_BASE = { thumb: 1, index: 5, middle: 9, ring: 13, pinky: 17 };
 // Hand-landmark indices used to orient the wrist/hand bone (wrist -> middle MCP).
 const WRIST_FROM = 0;
 const WRIST_TO = 9;
+const BODY_WORLD_POINTS = {
+  nose: 0,
+  leftShoulder: 11,
+  rightShoulder: 12,
+  leftElbow: 13,
+  rightElbow: 14,
+  leftWrist: 15,
+  rightWrist: 16,
+  leftHip: 23,
+  rightHip: 24,
+  leftKnee: 25,
+  rightKnee: 26,
+  leftAnkle: 27,
+  rightAnkle: 28,
+  leftHeel: 29,
+  rightHeel: 30,
+  leftFootIndex: 31,
+  rightFootIndex: 32
+};
+
+// MediaPipe world landmarks are metric-ish, centered around the hips, with +y downward.
+// Convert them to the SAME visible convention as the working Mushy skeleton:
+// - flip x so the GLB follows the skeleton's on-screen left/right,
+// - flip y so "up" is +y in Three,
+// - flip z so landmarks closer to the camera move toward the front of the model.
+//
+// The old version only flipped y. That is why the GLBs looked better structurally but still
+// drove the user's right-side motion onto the model's left side and put forward hands behind
+// the body.
+// Do NOT use mapPoseLandmark here: it is a display projection (mirrored and z-squashed)
+// that is intentionally fine for the Mushy stick figure but invalid for skinned-bone
+// rotations.
+function mapWorldPoseLandmark(landmark, out = new THREE.Vector3()) {
+  return out.set(-landmark.x, -landmark.y, -(landmark.z || 0));
+}
+
+// Per-limb pole landmark: pins the bone's roll/twist so the limb's bend plane matches the
+// person (e.g. the elbow stays in the shoulder-elbow-wrist plane) instead of the arbitrary
+// shortest-arc roll that a direction-only aim leaves free. `rest` selects the bind-pose
+// reference joint used to capture the limb's neutral bend plane.
+const POLE_CONFIG = {
+  leftShoulder: { pole: "leftWrist", rest: "grandchild" },
+  rightShoulder: { pole: "rightWrist", rest: "grandchild" },
+  leftElbow: { pole: "leftShoulder", rest: "parent" },
+  rightElbow: { pole: "rightShoulder", rest: "parent" },
+  leftHip: { pole: "leftAnkle", rest: "grandchild" },
+  rightHip: { pole: "rightAnkle", rest: "grandchild" },
+  leftKnee: { pole: "leftHip", rest: "parent" },
+  rightKnee: { pole: "rightHip", rest: "parent" }
+};
 
 /** Classify a bone name into a finger (rig-agnostic: Mixamo, Meshy, Rigify, ...). */
 function classifyFinger(name) {
@@ -82,6 +132,45 @@ function aimSegment(entry, start, end, dir, delta, desired, parentQuat, blend = 
   entry.bone.parent.getWorldQuaternion(parentQuat);
   parentQuat.invert();
   desired.premultiply(parentQuat); // world target -> bone-local target
+  if (blend >= 1) entry.bone.quaternion.copy(desired);
+  else entry.bone.quaternion.slerp(desired, blend);
+  return true;
+}
+
+function projectOntoPlane(vector, normal, out) {
+  out.copy(vector).addScaledVector(normal, -vector.dot(normal));
+  return out.lengthSq() > 1e-8 ? out.normalize() : null;
+}
+
+/**
+ * Direction + roll solver for skinned bones.
+ * First swings the bind segment direction to the tracked segment, then rolls around that
+ * segment so a bind-pose pole vector lands in the tracked limb plane. This is still
+ * bind-relative (works for T-pose Mixamo and down-arm Meshy), but unlike the old shortest
+ * arc it doesn't leave twist arbitrary.
+ */
+function aimSegmentWithPole(entry, start, end, pole, dir, delta, desired, parentQuat, blend = 1) {
+  if (!aimSegment(entry, start, end, dir, delta, desired, parentQuat, blend)) return false;
+  if (!entry.restPoleDir || !pole) return true;
+
+  const targetDir = dir; // aimSegment normalized it to end-start.
+  const targetPole = new THREE.Vector3().subVectors(pole, start);
+  const targetPolePlane = new THREE.Vector3();
+  if (!projectOntoPlane(targetPole, targetDir, targetPolePlane)) return true;
+
+  // Convert the just-written local quaternion back to world to measure the current pole.
+  entry.bone.parent.updateWorldMatrix(true, false);
+  entry.bone.parent.getWorldQuaternion(parentQuat);
+  const currentWorld = new THREE.Quaternion().multiplyQuaternions(parentQuat, entry.bone.quaternion);
+  const currentPolePlane = new THREE.Vector3();
+  if (!projectOntoPlane(entry.restPoleDir.clone().applyQuaternion(currentWorld), targetDir, currentPolePlane)) {
+    return true;
+  }
+
+  delta.setFromUnitVectors(currentPolePlane, targetPolePlane);
+  desired.multiplyQuaternions(delta, currentWorld);
+  parentQuat.invert();
+  desired.premultiply(parentQuat);
   if (blend >= 1) entry.bone.quaternion.copy(desired);
   else entry.bone.quaternion.slerp(desired, blend);
   return true;
@@ -125,6 +214,11 @@ export class MushyModelAvatar extends MushyAvatar {
     this.worldLandmarks = null;  // results.ea — metric 3D world coords (fixes depth noise)
     this.rawPoseLandmarks = null; // normalized 2D pose landmarks
     this.lastVideo = null;        // video element for Kalidokit image-size inference
+    this.worldPoints = new Map();
+    this.worldActivePoints = new Set();
+    Object.keys(BODY_WORLD_POINTS).forEach((name) => {
+      this.worldPoints.set(name, new THREE.Vector3());
+    });
 
     this._dir = new THREE.Vector3();
     this._a = new THREE.Vector3();
@@ -144,7 +238,19 @@ export class MushyModelAvatar extends MushyAvatar {
     this.worldLandmarks = payload?.worldLandmarks || null;
     this.rawPoseLandmarks = payload?.poseLandmarks || null;
     this.lastVideo = payload?.media?.video || null;
+    this.updateWorldPosePoints(this.worldLandmarks);
     super.updateTracking(payload);
+  }
+
+  updateWorldPosePoints(worldLandmarks) {
+    this.worldActivePoints.clear();
+    if (!worldLandmarks?.length) return;
+    Object.entries(BODY_WORLD_POINTS).forEach(([name, index]) => {
+      const landmark = worldLandmarks[index];
+      if (!landmark) return;
+      mapWorldPoseLandmark(landmark, this.worldPoints.get(name));
+      this.worldActivePoints.add(name);
+    });
   }
 
   setAnimation(clipName) {
@@ -249,15 +355,38 @@ export class MushyModelAvatar extends MushyAvatar {
     const b = new THREE.Vector3();
     bone.getWorldPosition(a);
     child.getWorldPosition(b);
-    list.push({
+    const restWorldQuat = bone.getWorldQuaternion(new THREE.Quaternion());
+    const entry = {
       from,
       to,
       limb,
       bone,
       restLocalQuat: bone.quaternion.clone(),
-      restWorldQuat: bone.getWorldQuaternion(new THREE.Quaternion()),
+      restWorldQuat,
       restWorldDir: b.sub(a).normalize()
-    });
+    };
+
+    const poleConfig = POLE_CONFIG[from];
+    if (poleConfig) {
+      const poleBone =
+        poleConfig.rest === "parent"
+          ? bone.parent
+          : child.children.find((node) => node.isBone);
+      if (poleBone) {
+        const poleWorld = new THREE.Vector3();
+        poleBone.getWorldPosition(poleWorld);
+        const poleDir = poleWorld.sub(a);
+        if (poleDir.lengthSq() > 1e-8) {
+          entry.pole = poleConfig.pole;
+          entry.restPoleDir = poleDir
+            .normalize()
+            .applyQuaternion(restWorldQuat.clone().invert())
+            .normalize();
+        }
+      }
+    }
+
+    list.push(entry);
   }
 
   buildBoneEntries() {
@@ -443,11 +572,12 @@ export class MushyModelAvatar extends MushyAvatar {
    * Returns true when at least some rotations were applied.
    */
   _driveKalidokit() {
-    // The VRM->rig axis correction (KALIDO_AXIS_FIX) was calibrated and verified ONLY for
-    // the Mixamo rig (identity bind pose; scripts/retarget-test.mjs). Meshy bind poses differ
-    // and would need their own empirically-verified correction — which can't be tested
-    // locally (Meshy GLBs are gitignored). Until that's verified, non-Mixamo rigs fall back
-    // to the rig-agnostic aimSegment solver rather than risk a wrong-axis (swapped) pose.
+    // Kalidokit's solve emits VRM rotations relative to a canonical T-pose. The three-vrm
+    // change-of-basis below only reproduces that for a near-identity (T-pose) bind, which is
+    // true for Mixamo but NOT Meshy (arms rest downward) — scripts/retarget-test.mjs shows the
+    // Meshy arms barely leave their down-bind under this path. So this stays a Mixamo-only
+    // refinement; the rig-agnostic world-landmark aim branch in driveModelFromSkeleton()
+    // handles every rig instead.
     if (this.rig !== "mixamo") return false;
     if (!this.kalidoBones.length || !this.worldLandmarks || !this.rawPoseLandmarks) return false;
     if (this.worldLandmarks.length < 17 || this.rawPoseLandmarks.length < 17) return false;
@@ -500,6 +630,21 @@ export class MushyModelAvatar extends MushyAvatar {
     return this.activePoints.has(from) && this.activePoints.has(to);
   }
 
+  worldSegmentVisible(from, to) {
+    return this.worldActivePoints.has(from) && this.worldActivePoints.has(to);
+  }
+
+  worldFootEnd(side, out) {
+    const heel = side === "left" ? "leftHeel" : "rightHeel";
+    const toe = side === "left" ? "leftFootIndex" : "rightFootIndex";
+    if (this.worldActivePoints.has(heel) && this.worldActivePoints.has(toe)) {
+      return midpoint(out, this.worldPoints.get(heel), this.worldPoints.get(toe));
+    }
+    if (this.worldActivePoints.has(toe)) return out.copy(this.worldPoints.get(toe));
+    if (this.worldActivePoints.has(heel)) return out.copy(this.worldPoints.get(heel));
+    return null;
+  }
+
   applySkeletonVisibility() {
     if (this.showDebugSkeleton || !this.modelReady) return;
     this.joints.forEach((joint) => {
@@ -539,10 +684,15 @@ export class MushyModelAvatar extends MushyAvatar {
     const hasCore = ["leftShoulder", "rightShoulder", "leftHip", "rightHip"].every((name) =>
       this.activePoints.has(name)
     );
+    const hasWorldCore = ["leftShoulder", "rightShoulder", "leftHip", "rightHip"].every((name) =>
+      this.worldActivePoints.has(name)
+    );
+    const useWorldBody = bodyTracking && this.worldActivePoints.size >= 8;
 
-    if (bodyTracking && hasCore && this.spineEntry) {
-      midpoint(this._a, this.points.get("leftHip"), this.points.get("rightHip"));
-      midpoint(this._b, this.points.get("leftShoulder"), this.points.get("rightShoulder"));
+    if (bodyTracking && this.spineEntry && (hasWorldCore || hasCore)) {
+      const pointMap = useWorldBody && hasWorldCore ? this.worldPoints : this.points;
+      midpoint(this._a, pointMap.get("leftHip"), pointMap.get("rightHip"));
+      midpoint(this._b, pointMap.get("leftShoulder"), pointMap.get("rightShoulder"));
       aimSegment(
         this.spineEntry,
         this._a,
@@ -558,18 +708,34 @@ export class MushyModelAvatar extends MushyAvatar {
       this.limbEntries.forEach((entry) => {
         let start;
         let end;
+        let pole = null;
+        let usedWorld = false;
 
         if (entry.limb === "foot") {
           const side = entry.from.startsWith("left") ? "left" : "right";
-          if (!this.activePoints.has(entry.from)) {
+          if (useWorldBody && this.worldActivePoints.has(entry.from)) {
+            start = this.worldPoints.get(entry.from);
+            end = this.worldFootEnd(side, this._b);
+            usedWorld = Boolean(end);
+          }
+          if (!usedWorld && !this.activePoints.has(entry.from)) {
             entry.bone.quaternion.slerp(entry.restLocalQuat, 0.2);
             return;
           }
-          start = this.points.get(entry.from);
-          end = this.footEnd(side, this._b);
+          if (!usedWorld) {
+            start = this.points.get(entry.from);
+            end = this.footEnd(side, this._b);
+          }
           if (!end) {
             entry.bone.quaternion.slerp(entry.restLocalQuat, 0.2);
             return;
+          }
+        } else if (useWorldBody && this.worldSegmentVisible(entry.from, entry.to)) {
+          start = this.worldPoints.get(entry.from);
+          end = this.worldPoints.get(entry.to);
+          usedWorld = true;
+          if (entry.pole && this.worldActivePoints.has(entry.pole)) {
+            pole = this.worldPoints.get(entry.pole);
           }
         } else if (this.segmentVisible(entry.from, entry.to)) {
           start = this.points.get(entry.from);
@@ -579,16 +745,28 @@ export class MushyModelAvatar extends MushyAvatar {
           return;
         }
 
-        if (
-          !aimSegment(entry, start, end, this._dir, this._delta, this._desired, this._parentQuat)
-        ) {
+        const ok =
+          usedWorld && pole
+            ? aimSegmentWithPole(
+                entry,
+                start,
+                end,
+                pole,
+                this._dir,
+                this._delta,
+                this._desired,
+                this._parentQuat
+              )
+            : aimSegment(entry, start, end, this._dir, this._delta, this._desired, this._parentQuat);
+        if (!ok) {
           entry.bone.quaternion.slerp(entry.restLocalQuat, 0.2);
         }
       });
     }
 
-    if (this.neckEntry && this.neck.visible && hasCore) {
-      midpoint(this._a, this.points.get("leftShoulder"), this.points.get("rightShoulder"));
+    if (this.neckEntry && this.neck.visible && (hasWorldCore || hasCore)) {
+      const pointMap = useWorldBody && hasWorldCore ? this.worldPoints : this.points;
+      midpoint(this._a, pointMap.get("leftShoulder"), pointMap.get("rightShoulder"));
       aimSegment(
         this.neckEntry,
         this._a,
@@ -635,10 +813,6 @@ export class MushyModelAvatar extends MushyAvatar {
         this.fingerEntries.forEach((entry) => entry.bone.quaternion.slerp(entry.restLocalQuat, 0.25));
       }
     }
-
-    // Kalidokit pass: runs AFTER aimSegment so its result wins for covered bones.
-    // Uses world landmarks (metric 3D) for correct depth — fixes hands-in-body.
-    if (!this.previewOnly) this._driveKalidokit();
 
     this.model.updateMatrixWorld(true);
   }
