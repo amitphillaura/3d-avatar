@@ -30,7 +30,7 @@ const _tip = new THREE.Vector3();
 /** Typical foot Y in Mushy space when the subject is centered in frame. */
 export const MUSHY_FOOT_Y = (0.58 - 0.9) * 4.8;
 
-/** Typical hip-line Y for the same framing (used to vertically center GLB meshes). */
+/** Typical hip-line Y for Mushy hero framing. */
 export const MUSHY_HIP_Y = (0.58 - 0.62) * 4.8;
 
 /** Proven Mushy 3D mapping — rigged models use this, not a separate CAL. */

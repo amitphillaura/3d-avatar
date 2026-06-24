@@ -1,7 +1,10 @@
 import "./styles.css";
-import { MushyAvatar } from "./avatar.js";
-import { ModelGallery } from "./modelGallery.js";
-import { rescanBodyModels } from "./modelRegistry.js";
+import { RigHost } from "./rigHost.js";
+import {
+  facingFromMediaPipeZ,
+  formatJointLabelWithFacing,
+  torsoMidZFromPoseLandmarks
+} from "./jointLabels.js";
 import {
   POSE,
   POSE_BONE_CONNECTIONS,
@@ -34,6 +37,11 @@ const swapHandsToggle = document.getElementById("swapHands");
 const loopVideoToggle = document.getElementById("loopVideo");
 const videoSoundToggle = document.getElementById("videoSound");
 const SWAP_HANDS_STORAGE_KEY = "live-pose-swap-hands";
+const FULL_SKELETON_LABELS_KEY = "live-pose-full-skeleton-labels";
+const RIGGED_LABELS_KEY = "live-pose-rigged-labels";
+const RAW_CONTROLS_EXPANDED_KEY = "live-pose-raw-controls-expanded";
+
+let showFullSkeletonJointLabels = true;
 
 function applyVideoSound() {
   // Sound on = unmuted. Muted while scrubbing/seeking is fine; play() is user-gesture-driven.
@@ -71,27 +79,23 @@ const fullSkeletonMetaEl = document.getElementById("fullSkeletonMeta");
 const faceTrackingMetaEl = document.getElementById("faceTrackingMeta");
 const leftHandTrackingMetaEl = document.getElementById("leftHandTrackingMeta");
 const rightHandTrackingMetaEl = document.getElementById("rightHandTrackingMeta");
-const bodyModelGalleryEl = document.getElementById("bodyModelGallery");
-const faceModelGalleryEl = document.getElementById("faceModelGallery");
 const riggedModelMountEl = document.getElementById("riggedModelMount");
 const riggedModelMetaEl = document.getElementById("riggedModelMeta");
-const riggedModelSelectEl = document.getElementById("riggedModelSelect");
-const riggedBadgeEl = document.getElementById("riggedBadge");
-const driverNameEl = document.getElementById("driverName");
-const driverMetaEl = document.getElementById("driverMeta");
-const driverAnimSelectEl = document.getElementById("driverAnimSelect");
-const driverExportBtn = document.getElementById("driverExportBtn");
+const fullSkeletonJointLabelsToggle = document.getElementById("fullSkeletonJointLabels");
+const riggedJointLabelsToggle = document.getElementById("riggedJointLabels");
+const rawControlsToggle = document.getElementById("rawControlsToggle");
+const rawControlsPanel = document.getElementById("rawControlsPanel");
+const exportPoseBtn = document.getElementById("exportPoseBtn");
 const lastExportTimeEl = document.getElementById("lastExportTime");
 const modelsLoadedIndicatorEl = document.getElementById("modelsLoadedIndicator");
 const modelsLoadedTextEl = document.getElementById("modelsLoadedText");
-const refreshModelsButton = document.getElementById("refreshModels");
 
 let latestResults = null;
 let cameraInstance = null;
 let glowTrails = [];
 let frameTick = 0;
 let holistic = null;
-let modelGallery = null;
+let rigHost = null;
 let videoObjectUrl = null;
 let imageObjectUrl = null;
 let videoLoopId = null;
@@ -493,6 +497,37 @@ function drawJointDots(ctx, project, landmarks, indices, radius = 3, color = "#f
   });
 }
 
+function drawPoseJointLabels(ctx, project, pose) {
+  if (!showFullSkeletonJointLabels || !pose) return;
+  const torsoZ = torsoMidZFromPoseLandmarks(pose);
+
+  Object.entries(KEY_LANDMARKS).forEach(([name, index]) => {
+    const landmark = pose[index];
+    if (!landmark) return;
+
+    const point = project(landmark);
+    const facing = facingFromMediaPipeZ(landmark.z || 0, torsoZ);
+    const text = formatJointLabelWithFacing(name, facing);
+    const isBack = facing === "B";
+    const dotColor = isBack ? "#ff7bd5" : "#00f0a8";
+    const textColor = isBack ? "#ffd4f0" : "#b8ffe8";
+
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = dotColor;
+    ctx.fill();
+
+    ctx.font = "600 9px ui-sans-serif, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "rgba(0,0,0,0.85)";
+    ctx.fillStyle = textColor;
+    ctx.strokeText(text, point.x, point.y - 6);
+    ctx.fillText(text, point.x, point.y - 6);
+  });
+}
+
 function paintSkeletonBackdrop(ctx, canvas, drawRect) {
   ctx.fillStyle = "#020306";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -745,9 +780,10 @@ function buildCurrentExportData({ fullFace = true } = {}) {
     exportData.face_landmark_count = landmarks.length;
   }
 
+  const { left: leftHandLm, right: rightHandLm } = getAnatomicalHands();
   const hands = {
-    ...compactHandLandmarks(latestResults?.leftHandLandmarks, "left"),
-    ...compactHandLandmarks(latestResults?.rightHandLandmarks, "right")
+    ...compactHandLandmarks(leftHandLm, "left"),
+    ...compactHandLandmarks(rightHandLm, "right")
   };
   if (Object.keys(hands).length) {
     exportData.hands = hands;
@@ -760,7 +796,7 @@ function hasDetectedData(data) {
   return Boolean(data.body || data.face || data.hands);
 }
 
-function setModelsLoaded(ready, message = "Models loaded") {
+function setModelsLoaded(ready, message = "MediaPipe ready") {
   if (modelsLoadedTextEl) modelsLoadedTextEl.textContent = message;
   modelsLoadedIndicatorEl?.classList.toggle("is-ready", ready);
 }
@@ -801,9 +837,9 @@ function formatLabel(name) {
 function updateTrackingFooters(exportData) {
   const bodyActive = Boolean(exportData.body);
   const faceActive = Boolean(exportData.face);
-  // Swap: MediaPipe "right" landmark = person's left hand (front-facing camera/video)
-  const leftActive = Boolean(latestResults?.rightHandLandmarks?.length);
-  const rightActive = Boolean(latestResults?.leftHandLandmarks?.length);
+  const { left: leftHandLm, right: rightHandLm } = getAnatomicalHands();
+  const leftActive = Boolean(leftHandLm?.length);
+  const rightActive = Boolean(rightHandLm?.length);
 
   if (bodyTrackingMetaEl) {
     bodyTrackingMetaEl.textContent = bodyActive
@@ -1061,23 +1097,22 @@ function drawSingleHandSkeleton(ctx, canvas, landmarks, message, color) {
 }
 
 function drawLeftHandSkeleton() {
-  // MediaPipe labels hands from the camera's POV: "right" landmark = person's left hand
-  // (they're facing the camera so their left is on our right). Swap here so the panel
-  // labelled "Left Hand" actually shows the person's left hand.
+  const { left } = getAnatomicalHands();
   drawSingleHandSkeleton(
     leftHandSkeletonCtx,
     leftHandSkeletonCanvas,
-    latestResults?.rightHandLandmarks,
+    left,
     "No left hand",
     "#ff7bd5"
   );
 }
 
 function drawRightHandSkeleton() {
+  const { right } = getAnatomicalHands();
   drawSingleHandSkeleton(
     rightHandSkeletonCtx,
     rightHandSkeletonCanvas,
-    latestResults?.leftHandLandmarks,
+    right,
     "No right hand",
     "#59a6ff"
   );
@@ -1088,8 +1123,7 @@ function drawFullSkeleton() {
   const canvas = fullSkeletonCanvas;
   const pose = latestResults?.poseLandmarks;
   const face = latestResults?.faceLandmarks;
-  const leftHand = latestResults?.leftHandLandmarks;
-  const rightHand = latestResults?.rightHandLandmarks;
+  const { left: leftHand, right: rightHand } = getAnatomicalHands();
 
   resizeCanvasToDisplay(canvas);
 
@@ -1109,7 +1143,11 @@ function drawFullSkeleton() {
 
   if (pose) {
     drawConnectorSet(ctx, project, pose, SKELETON_BONES, "#00f0a8", 3.2);
-    drawJointDots(ctx, project, pose, Object.values(KEY_LANDMARKS), 3, "#ffffff");
+    if (showFullSkeletonJointLabels) {
+      drawPoseJointLabels(ctx, project, pose);
+    } else {
+      drawJointDots(ctx, project, pose, Object.values(KEY_LANDMARKS), 3, "#ffffff");
+    }
 
     const shoulderMid = shoulderMidFromPose(pose);
     if (shoulderMid && pose[POSE.nose]) {
@@ -1338,6 +1376,19 @@ function applyHandSwap() {
   latestResults.rightHandLandmarks = tmp;
 }
 
+// Person-relative left/right hand arrays for UI. When the toggle is off, MediaPipe still
+// labels from the camera POV — swap for display/export only. When on, applyHandSwap() has
+// already corrected latestResults so pass through unchanged.
+function getAnatomicalHands() {
+  if (!latestResults) return { left: null, right: null };
+  const left = latestResults.leftHandLandmarks;
+  const right = latestResults.rightHandLandmarks;
+  if (swapHandsToggle?.checked) {
+    return { left, right };
+  }
+  return { left: right, right: left };
+}
+
 async function processCurrentFrame() {
   const frameSource = getFrameSource();
   if (isProcessingFrame || !holistic || !frameSource) {
@@ -1351,7 +1402,7 @@ async function processCurrentFrame() {
     applyHandSwap();
     const { width, height } = getFrameDimensions(frameSource);
     if (width > 0 && height > 0) lastSourceAspect = width / height;
-    modelGallery?.updateTracking(latestResults, {
+    rigHost?.updateTracking(latestResults, {
       video: frameSource === videoElement ? videoElement : null,
       width,
       height
@@ -1391,7 +1442,7 @@ function setupModels() {
 
 function resetDetection() {
   latestResults = null;
-  modelGallery?.resetTracking?.();
+  rigHost?.resetTracking?.();
   bodyTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
   faceTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
   leftHandTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
@@ -1770,7 +1821,7 @@ function bindEvents() {
   restartVideoButton.addEventListener("click", restartLoadedVideo);
   snapshotButton.addEventListener("click", downloadSnapshot);
   restartCameraButton?.addEventListener("click", restartCamera);
-  driverExportBtn?.addEventListener("click", copyKeypointsJSON);
+  exportPoseBtn?.addEventListener("click", copyKeypointsJSON);
   retryButton.addEventListener("click", () => {
     if (cameraInstance) {
       stopCameraAndIdle();
@@ -1832,7 +1883,7 @@ function bindEvents() {
   });
 
   trackFingersToggle?.addEventListener("change", () => {
-    modelGallery?.setTrackFingers?.(trackFingersToggle.checked);
+    rigHost?.setTrackFingers?.(trackFingersToggle.checked);
     setStatus(`Rigged finger tracking: ${trackFingersToggle.checked ? "on" : "off"}.`);
   });
 
@@ -1844,6 +1895,36 @@ function bindEvents() {
     }
     setStatus(`Hands L/R: ${swapHandsToggle.checked ? "swapped" : "normal"}.`);
     processCurrentFrame();
+  });
+
+  fullSkeletonJointLabelsToggle?.addEventListener("change", () => {
+    showFullSkeletonJointLabels = fullSkeletonJointLabelsToggle.checked;
+    try {
+      localStorage.setItem(FULL_SKELETON_LABELS_KEY, showFullSkeletonJointLabels ? "1" : "0");
+    } catch {
+      // ignore storage failures
+    }
+    if (latestResults) updateKeypointsPanel();
+    else drawFullSkeleton();
+  });
+
+  riggedJointLabelsToggle?.addEventListener("change", () => {
+    try {
+      localStorage.setItem(RIGGED_LABELS_KEY, riggedJointLabelsToggle.checked ? "1" : "0");
+    } catch {
+      // ignore storage failures
+    }
+    rigHost?.setShowJointLabels?.(riggedJointLabelsToggle.checked);
+  });
+
+  rawControlsToggle?.addEventListener("click", () => {
+    const expanded = Boolean(rawControlsPanel?.hidden);
+    setRawControlsExpanded(expanded);
+    try {
+      localStorage.setItem(RAW_CONTROLS_EXPANDED_KEY, expanded ? "1" : "0");
+    } catch {
+      // ignore storage failures
+    }
   });
 
   loopVideoToggle?.addEventListener("change", () => {
@@ -1902,15 +1983,6 @@ function bindEvents() {
     if (sourceSelect.value !== "video" || videoScrubbing || !videoLoaded) return;
     syncVideoScrubControls();
     updateVideoFrameMeta();
-  });
-
-  refreshModelsButton?.addEventListener("click", async () => {
-    setStatus("Scanning body models...", "warning");
-    await rescanBodyModels();
-    setStatus("Refreshing model gallery...", "warning");
-    modelGallery?.dispose();
-    await initModelGallery();
-    setStatus("Model gallery refreshed.");
   });
 
   modeSelect.addEventListener("change", () => {
@@ -1996,25 +2068,18 @@ function setupLandmarkPopups() {
   });
 }
 
-async function initModelGallery() {
-  modelGallery = new ModelGallery({
-    bodyMount: bodyModelGalleryEl,
-    faceMount: faceModelGalleryEl,
-    heroMount: riggedModelMountEl,
-    riggedModelMeta: riggedModelMetaEl,
-    riggedModelSelect: riggedModelSelectEl,
-    riggedBadge: riggedBadgeEl,
-    driverName: driverNameEl,
-    driverMeta: driverMetaEl,
-    driverAnimSelect: driverAnimSelectEl,
-    onPrimaryChange: (avatar) => {
-      window.__avatar = avatar;
-    }
+async function initRigHost() {
+  rigHost = new RigHost({
+    mount: riggedModelMountEl,
+    metaElement: riggedModelMetaEl
   });
-  await modelGallery.init();
-  modelGallery.setTrackFingers(Boolean(trackFingersToggle?.checked));
-  window.__avatar = modelGallery.getPrimaryAvatar();
-  window.__modelGallery = modelGallery;
+  rigHost.prepare({
+    showJointLabels: riggedJointLabelsToggle?.checked ?? true,
+    trackFingers: Boolean(trackFingersToggle?.checked)
+  });
+  rigHost.init();
+  window.__avatar = rigHost.avatar;
+  window.__rigHost = rigHost;
   setModelsLoaded(true);
 }
 
@@ -2051,17 +2116,43 @@ function loadImageURL(url, name = "image") {
   setStatus("Loading image URL...", "warning");
 }
 
+function readStoredBool(key, defaultValue = true) {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored === null) return defaultValue;
+    return stored === "1";
+  } catch {
+    return defaultValue;
+  }
+}
+
+function setRawControlsExpanded(expanded) {
+  if (!rawControlsPanel || !rawControlsToggle) return;
+  rawControlsPanel.hidden = !expanded;
+  rawControlsToggle.setAttribute("aria-expanded", String(expanded));
+  rawControlsToggle.textContent = expanded ? "Hide controls" : "Controls";
+  document.querySelector(".viz-card--raw")?.classList.toggle("viz-card--raw-controls-open", expanded);
+  requestAnimationFrame(() => syncVizPlayerLayout());
+}
+
 function init() {
   if (swapHandsToggle) {
     try {
-      // Default OFF: swapping the source data fixed the panel labels but mis-oriented the
-      // rigged-model wrists (hands crossing into the body). Handedness is being reworked
-      // via a proper solver; leave this as an opt-in display correction for now.
+      // Default OFF: getAnatomicalHands() corrects panel labels for front-facing video.
+      // Turn ON when MediaPipe hand labels need a source-level swap for the rig as well.
       swapHandsToggle.checked = localStorage.getItem(SWAP_HANDS_STORAGE_KEY) === "1";
     } catch {
       swapHandsToggle.checked = false;
     }
   }
+  if (fullSkeletonJointLabelsToggle) {
+    fullSkeletonJointLabelsToggle.checked = readStoredBool(FULL_SKELETON_LABELS_KEY, true);
+    showFullSkeletonJointLabels = fullSkeletonJointLabelsToggle.checked;
+  }
+  if (riggedJointLabelsToggle) {
+    riggedJointLabelsToggle.checked = readStoredBool(RIGGED_LABELS_KEY, true);
+  }
+  setRawControlsExpanded(readStoredBool(RAW_CONTROLS_EXPANDED_KEY, false));
   bindEvents();
   setupLandmarkPopups();
   applyPlaybackSpeed();
@@ -2117,16 +2208,16 @@ function init() {
 }
 
 async function bootApp() {
-  setStatus("Loading model gallery...", "warning");
+  setStatus("Loading Mushy rig...", "warning");
   retryButton.disabled = true;
 
-  let galleryReady = false;
+  let rigReady = false;
   try {
-    await initModelGallery();
-    galleryReady = true;
+    await initRigHost();
+    rigReady = true;
   } catch (error) {
     console.error(error);
-    setStatus(`Model gallery failed to load: ${error.message || "check models/registry.json"}`, "danger");
+    setStatus(`Mushy rig failed to load: ${error.message || "check console"}`, "danger");
   }
 
   setStatus("Loading MediaPipe... first run can take a few seconds.", "warning");
@@ -2134,8 +2225,8 @@ async function bootApp() {
   syncSourceUI();
   refreshRawPanel();
   syncVizPlayerLayout();
-  setModelsLoaded(galleryReady);
-  if (galleryReady) {
+  setModelsLoaded(rigReady);
+  if (rigReady) {
     setStatus("Ready. Click Start Camera or load an image/video file to begin.", "success");
   }
 }

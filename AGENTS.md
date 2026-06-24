@@ -1,8 +1,8 @@
 # Agent Guide
 
 This project is a Vite + Three.js local pose-transfer prototype. It tracks MediaPipe
-Holistic face/body landmarks from webcam, uploaded video, or uploaded still images and drives procedural and
-GLB body rigs from a shared model gallery.
+Holistic face/body landmarks from webcam, uploaded video, or uploaded still images and
+drives the procedural **Mushy Rig**.
 
 **Production runs on this machine only** — not hosted. GitHub stores the repo code; CI
 builds on push but does not deploy anywhere.
@@ -30,31 +30,15 @@ use the media file picker with a video or image.
 ## Important Files
 
 - `src/app.js` — MediaPipe pipeline, 2D skeleton panes, video frame scrubber, layout sync, JSON export.
-- `src/avatar.js` — `MushyAvatar`, `OneEuro` filter, hero letterbox viewport, `frameBodyCamera`.
-- `src/mushyModelAvatar.js` — GLB skinned on Mushy root; hero + gallery body cards use this.
-- `src/poseSkeleton.js` — shared `mapPoseLandmark`, `MUSHY_HIP_Y` / `MUSHY_FOOT_Y`.
+- `src/avatar.js` — `MushyAvatar`, `OneEuro` filter, hero letterbox viewport, joint labels.
+- `src/rigHost.js` — mounts hero Mushy viewer and forwards tracking.
+- `src/poseSkeleton.js` — shared `mapPoseLandmark`, framing constants.
 - `src/skeletonGraph.js` — pose connections, feet, neck bridge for 2D panes.
-- `src/mixamoRig.js` — `MIXAMO_BONE_MAP`, `MESHY_BONE_MAP`, bone lookup.
-- `src/modelGallery.js` — hero rig mount, body/face cards, primary model localStorage.
-- `src/modelRegistry.js` — loads `registry.json`, body manifest scan, GLB availability probe.
-- `src/glbAvatar.js` — legacy `CharacterAvatar`; **not used by hero gallery** (candidate to remove).
-- `src/faceRig.js` — face landmark rig solver (2D/3D head; GLB face retarget TBD).
-- `public/models/registry.json` — bundled models + `bodyOverrides` for Meshy filenames.
-- `public/models/body/` — drop Meshy/custom body GLBs (**gitignored**); auto-scanned at build.
-- `public/models/face/` — drop face GLBs here (**gitignored**).
-- `public/models/character.glb` — bundled Mixamo Xbot (committed).
-- `index.html` — sidebar + primary row (3 big viewers) + anatomical diagnostics + model dock.
+- `src/jointLabels.js` — shared joint label text + facing helpers.
+- `src/faceRig.js` — face landmark rig solver for Mushy head.
+- `index.html` — sidebar + primary row (Raw, Full Skeleton, Mushy Rig) + anatomical diagnostics.
 - `public/mediapipe/` — vendored MediaPipe Holistic runtime.
 - `HANDOFF.md`, `TODO.md` — handoff context and open work.
-
-## Adding a body model (Meshy workflow)
-
-1. In Meshy: rig character, add animations, download **GLB → All animations → single file**.
-2. Save to `public/models/body/` with any filename (e.g. `my-hero.glb`).
-3. Optionally add display name / rig / default clip in `public/models/registry.json` under `bodyOverrides` keyed by filename.
-4. In the app, click **Refresh Models** (or reload). Every `.glb` in `body/` appears in the gallery and hero dropdown.
-
-User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 
 ## Current Runtime Notes
 
@@ -62,15 +46,12 @@ User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 - Camera uses native `getUserMedia` + `requestAnimationFrame`, but does not auto-start.
 - Media file mode supports `video/*` playback, **frame scrubber** (30 fps), and one-frame `image/*`.
 - `modelComplexity` is `1` → requires `pose_landmark_full.tflite`.
-- Hero GLB pose = Mushy `mapPoseLandmark` points + bone `aimSegment` (not legacy CAL / `glbAvatar.js`).
-- Meshy models hold **bind pose on load**; pick animation from dropdown to preview a clip.
 - **Hero camera is fixed** (`frameBodyCameraFixed`) — a constant full-body frame, no per-frame follow.
-- **Pause holds the last pose** (stale tracking ≠ reset). Bind/idle reset only on `clearTracking()`
-  / `ModelGallery.resetTracking()` (explicit source switch / stop, via `resetDetection`).
-- **Hands are rig-agnostic + wrist-only by default**; `findHandBone`/`buildHandEntries` scan the
-  hand subtree. Sidebar **Track Fingers** toggle (`trackFingers`) opts into per-finger driving.
+- **Pause holds the last pose** (stale tracking ≠ reset). Reset only on explicit `clearTracking()` /
+  `resetDetection()` (source switch / stop).
+- Sidebar **Track Fingers** toggle (`trackFingers`) opts into per-finger driving on Mushy hands.
 - Hero 3D letterboxes to `--viz-aspect`; the 3 primary viewers fill their grid cells.
-- Dev hooks: `window.__avatar`, `window.__modelGallery`, `window.__loadVideoURL`,
+- Dev hooks: `window.__avatar`, `window.__rigHost`, `window.__loadVideoURL`,
   `window.__playVideo`, `window.__processFrame`, `window.__video`, `window.__image`.
 
 ## Verification Checklist
@@ -78,8 +59,7 @@ User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 - `npm run build` passes.
 - `npm audit --audit-level=low` reports 0 vulnerabilities.
 - `npm run start` → http://127.0.0.1:5180/ loads and tracks.
-- Body model gallery shows Mushy + bundled Xbot + scanned `body/*.glb` files.
-- Hero **Rigged Model** column tracks with video; panels align in height and header row.
+- Hero **Mushy Rig** column tracks with video; panels align in height and header row.
 - Live keypoint tables + JSON export still work.
 
 ## Deployment
@@ -93,5 +73,5 @@ User GLBs under `body/` and `face/` are **not committed** (see `.gitignore`).
 
 - Keep the keypoint panel and JSON export.
 - Do not remove local MediaPipe assets without a replacement strategy.
-- Do not commit `public/sample.mp4` or user GLBs in `public/models/body/` / `face/`.
+- Do not commit `public/sample.mp4`.
 - Keep `npm run build` green and audit clean; verify in a real browser.

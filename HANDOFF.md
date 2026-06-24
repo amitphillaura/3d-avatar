@@ -1,160 +1,56 @@
-# Handoff — Live Pose Tester ("3d Avatar")
+# Handoff — Live Pose Tester
 
-For the next agent/engineer picking this up. Read this first, then `TODO.md`.
+Local-only pose/face tester: MediaPipe Holistic → 2D skeleton panes + procedural **Mushy Rig**.
 
-## Where it lives
+**Prod URL:** http://127.0.0.1:5180/ (`npm run start` or `npm run autostart:install`)
 
-- **Project root:** `/Users/amit/Projects/3d Avatar`
-- **Git:** https://github.com/amitphillaura/3d-avatar — branch `main` (code only, no hosting)
-- **Production:** **this machine** — http://127.0.0.1:5180/ via `npm run start`
-- **Platform:** macOS. Node + Vite project.
+## What works
 
-## What it is
+1. **Raw video / image** — canvas output with optional skeleton overlay
+2. **Full Skeleton** — combined body + face + hands 2D pane (optional joint labels)
+3. **Mushy Rig** — procedural 3D cylinders driven from the same landmarks as Full Skeleton
+4. **Diagnostics** — Head / Body / Left Hand / Right Hand tiles + JSON export
 
-A Vite + Three.js **local pose-transfer prototype**. MediaPipe Holistic tracks body, face,
-and hands from **opt-in webcam, video file, or still image** and drives:
-
-1. **2D skeleton overlays** (raw video + dedicated panes)
-2. **Procedural Mushy stick rig** (reference skeleton in 3D)
-3. **GLB body models** skinned onto the same Mushy joint points (`MushyModelAvatar`)
-
-**Production runs on this machine only** — GitHub stores code; CI builds on push, no deploy.
-
-## Run it
-
-```bash
-cd "/Users/amit/Projects/3d Avatar"
-npm install
-npm run dev -- --port 5173     # development → http://127.0.0.1:5173/
-npm run start                  # manual prod → http://127.0.0.1:5180/
-npm run autostart:install      # auto on login (macOS)
-npm run build
-npm audit --audit-level=low
-```
-
-## UI layout (current)
-
-**Sidebar** — Source (camera / video / image), media picker, tracking mode, visual style,
-Refresh Models, snapshot/JSON export.
-
-**Primary row (3 big viewers):**
-
-| Tile | Content |
-|--------|---------|
-| Raw Video | MediaPipe overlay + camera/video controls + **frame scrubber** |
-| Full Skeleton | Combined 2D body + neck + feet + face + hands |
-| **Rigged Model** | Hero GLB driven by Mushy (`#riggedModelSelect` dropdown), fixed-frame camera |
-
-**Lower deck** — **anatomical diagnostics** (`.diag-anatomy`: Head on top, Body center, Left/Right
-Hand flanking; each a small skeleton tile with a **Data** button that pops the landmark table) +
-the dock (Mushy Drivers, Body Models gallery, Export/Status).
-
-### Layout rules
-
-- The 3 primary viewers fill their grid cells; `syncVizPlayerLayout()` sets `--viz-aspect`
-  (from the source) so the hero 3D viewport and 2D panes letterbox to the video aspect.
-- Primary-row tile headers share a min-height with the Rigged Model picker header so the row
-  aligns (label + 26px control row).
-- Landmark tables live in `.kp-popup` modals toggled by `.diag-data-btn` (`setupLandmarkPopups`).
-- Strict no-scroll on the wide local display; below 1500px the deck stacks and scrolls.
-
-## Architecture — pose → rig
+## Architecture
 
 ```
-MediaPipe Holistic
-       ↓
-  app.js (landmarks, 2D panes, export JSON)
-       ↓
-  mapPoseLandmark() in poseSkeleton.js   ← single 3D mapping (Mushy space)
-       ↓
-  MushyAvatar (procedural cylinders + points Map)
-       ↓
-  MushyModelAvatar (optional GLB on same root, aimSegment on bones)
+MediaPipe Holistic (local bundle)
+  → app.js (2D panes, export, media controls)
+  → rigHost.js → MushyAvatar (hero 3D viewer)
 ```
 
-**Ground truth:** Mushy `this.points` + cylinder directions. GLB models do **not** use a
-separate retarget stack or `glbAvatar.js` at runtime for the hero/gallery body slots.
+**Ground truth:** Mushy `mapPoseLandmark` + cylinder directions. Full Skeleton uses the same
+landmark indices via `skeletonGraph.js`.
 
-### Key modules
+## Key files
 
 | File | Role |
 |------|------|
-| `src/app.js` | MediaPipe pipeline, 2D skeleton panes, video scrubber, layout sync, JSON export |
-| `src/poseSkeleton.js` | `mapPoseLandmark`, `MUSHY_HIP_Y`, `MUSHY_FOOT_Y`, foot/neck helpers |
-| `src/skeletonGraph.js` | Shared pose connections, foot landmarks, neck bridge for 2D |
-| `src/avatar.js` | `MushyAvatar`, `OneEuro` filter, `frameBodyCamera`, letterboxed hero viewport |
-| `src/mushyModelAvatar.js` | GLB on Mushy root; `fitModelToSkeleton`, `driveModelFromSkeleton` |
-| `src/mixamoRig.js` | `MIXAMO_BONE_MAP`, `MESHY_BONE_MAP`, bone lookup helpers |
-| `src/modelGallery.js` | Hero mount, body/face cards, primary model persistence |
-| `src/glbAvatar.js` | Legacy `CharacterAvatar` — **not wired into hero gallery**; kept in repo |
+| `src/app.js` | Holistic loop, 2D drawing, layout sync, JSON export |
+| `src/avatar.js` | MushyAvatar — joints, bones, hands, face head, joint labels |
+| `src/rigHost.js` | Hero mount wrapper |
+| `src/poseSkeleton.js` | Landmark → Mushy 3D space |
+| `src/skeletonGraph.js` | 2D bone connections |
+| `index.html` | Layout: sidebar + 3 hero viewers + diagnostic deck |
 
-## Model library
+## Runtime notes
 
-```
-public/models/
-  registry.json          # bundled Xbot + bodyOverrides for Meshy filenames
-  character.glb          # bundled Mixamo Xbot
-  body/                  # drop Meshy GLBs (gitignored); auto-scanned at build
-  body/manifest.json     # generated by vite scan-body-models plugin
-  face/                  # face GLBs (gitignored)
-```
+- Camera is opt-in (**Start Camera**); video/image via file picker.
+- **Pause holds pose** on Mushy until explicit reset (source switch / stop).
+- `window.__avatar` — hero Mushy instance; `window.__rigHost` — mount wrapper.
+- Dev: `window.__loadVideoURL`, `window.__processFrame`, etc.
 
-Meshy exports: rig in Meshy, download GLB (all animations, single file), drop in `body/`.
-Optional metadata in `registry.json` → `bodyOverrides` keyed by filename.
-
-## Video controls
-
-- **Play / Pause / Restart / Loop** — standard transport
-- **Playback speed** — 10–300%
-- **Frame scrubber** — `FRAME` slider (30 fps steps). Drag to preview frame + tracking;
-  **release starts playback from that frame**. Footer shows `Frame N / total`.
-
-## Rigged model runtime notes
-
-- Models load in **rest/bind pose** — no animation auto-plays on load (walking clip was
-  causing bounce/root motion).
-- User picks a clip from hero dropdown or Mushy Drivers dock to preview an animation.
-- `fitModelToSkeleton()` scales to ~1.85 m and aligns hips to `MUSHY_HIP_Y`.
-- **Hero camera is fixed** (`frameBodyCameraFixed`): a constant full-body frame over the
-  bounded Mushy space — no per-frame follow, so it never jitters and stays in frame on pause.
-- **Pause = hold last pose.** When tracking goes stale the model holds its pose; it resets to
-  bind only on an explicit `clearTracking()` (source switch / stop).
-- **Hands:** rig-agnostic (`findHandBone`/`buildHandEntries` scan the hand subtree), wrist-only
-  by default; **Track Fingers** sidebar toggle enables slerp-damped per-finger driving.
-
-## Dev hooks
-
-`window.__avatar`, `window.__modelGallery`, `window.__loadVideoURL`, `window.__playVideo`,
-`window.__processFrame`, `window.__video`, `window.__image`, `window.__switchSource`
-
-## Conventions
-
-- Keep keypoint tables + JSON export.
-- Do not commit user GLBs in `body/` or `face/`.
-- Keep `npm run build` green and `npm audit --audit-level=low` clean.
-- Do not re-enable GitHub Pages unless the user asks.
-
-## Session changelog (Jun 2026)
-
-Work completed in the recent agent session(s):
-
-1. Replaced hero GLB retarget with **MushyModelAvatar** (mesh follows Mushy points).
-2. Added **Full Skeleton** column and shared `poseSkeleton` / `skeletonGraph` mapping.
-3. Added feet landmarks (MediaPipe 29–32) to skeleton + rig.
-4. Fixed Gray Bodysuit **bounce on load** (hold bind pose, no auto-play walk clip).
-5. Unified **panel player heights** and **tile header heights** across the analysis grid.
-6. Hero 3D **letterbox** to video aspect; camera framing to match 2D skeleton scale.
-7. Added **video frame scrubber** with live preview and play-from-scrub.
-8. Fixed rigged viewport **blank frame** (camera look-at center + mesh bounds fallback).
-
-## Verify before closing a task
+## Verify
 
 ```bash
-npm run build
-npm audit --audit-level=low
+npm run build && npm audit --audit-level=low
 npm run start   # → http://127.0.0.1:5180/
 ```
 
-- Load a portrait video, scrub frames, confirm skeleton + rigged model track together.
-- Raw / Full Skeleton / Rigged Model players should share height and top alignment.
-- Gray Bodysuit (or other Meshy GLB) should be visible in hero pane at rest and while tracking.
+Load a video or start camera; confirm Raw, Full Skeleton, and Mushy Rig stay aligned.
+
+## Constraints
+
+- Keep keypoint tables and JSON export.
+- Do not remove vendored MediaPipe without a replacement plan.
+- Do not commit `public/sample.mp4`.

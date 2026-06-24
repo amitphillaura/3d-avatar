@@ -6,7 +6,7 @@
     <title>Live Pose Tester | Webcam Keypoints for 3D Avatars</title>
     <meta
       name="description"
-      content="A local webcam pose and face keypoint tester for 3D avatar and pose transfer workflows."
+      content="A local webcam pose and face keypoint tester with a procedural Mushy rig."
     />
 
     <script src="/mediapipe/drawing_utils/drawing_utils.js"></script>
@@ -72,7 +72,6 @@
           </div>
 
           <div class="sidebar-section sidebar-section--actions">
-            <button id="refreshModels" type="button" class="btn">Refresh Models</button>
             <button id="downloadSnapshot" type="button" class="btn">Download Snapshot</button>
             <button id="copyKeypoints" type="button" class="btn" disabled>Copy JSON</button>
           </div>
@@ -80,13 +79,13 @@
           <div class="sidebar-footer">
             <div class="models-loaded" id="modelsLoadedIndicator">
               <span class="status-dot" aria-hidden="true"></span>
-              <span id="modelsLoadedText">Loading models...</span>
+              <span id="modelsLoadedText">Loading...</span>
             </div>
             <span class="version-tag">Version 1.0.0</span>
           </div>
 
           <div class="status status--sidebar" id="status" role="status" aria-live="polite">
-            Loading models...
+            Loading...
           </div>
         </aside>
 
@@ -100,83 +99,100 @@
               <div class="tile-player">
                 <canvas id="output" width="1280" height="720" aria-label="Full media output"></canvas>
               </div>
-              <div class="raw-media-controls" aria-label="Camera and video controls">
-                <div id="cameraControls" class="media-control-bar">
-                  <button id="retryCamera" type="button" class="media-btn media-btn--accent">
-                    <span class="media-btn-icon" aria-hidden="true">▶</span>
-                    Start Camera
+              <footer class="tile-footer tile-footer--raw">
+                <div class="raw-footer-bar">
+                  <button
+                    id="rawControlsToggle"
+                    type="button"
+                    class="raw-controls-toggle"
+                    aria-expanded="false"
+                    aria-controls="rawControlsPanel"
+                  >
+                    Controls
                   </button>
-                  <button id="restartCamera" type="button" class="media-btn" disabled>
-                    <span class="media-btn-icon" aria-hidden="true">↻</span>
-                    Restart
-                  </button>
+                  <div class="raw-footer-meta">
+                    <span id="frameMeta">Waiting for camera...</span>
+                    <span id="detectionState">Idle</span>
+                  </div>
                 </div>
-                <div id="videoControls" class="media-control-bar media-control-bar--video" hidden>
-                  <div class="media-control-actions">
-                    <button id="playVideo" type="button" class="media-btn media-btn--accent" disabled>
+                <div id="rawControlsPanel" class="raw-media-controls" hidden aria-label="Camera and video controls">
+                  <div id="cameraControls" class="media-control-bar">
+                    <button id="retryCamera" type="button" class="media-btn media-btn--accent">
                       <span class="media-btn-icon" aria-hidden="true">▶</span>
-                      Play
+                      Start Camera
                     </button>
-                    <button id="restartVideo" type="button" class="media-btn" disabled>
+                    <button id="restartCamera" type="button" class="media-btn" disabled>
                       <span class="media-btn-icon" aria-hidden="true">↻</span>
                       Restart
                     </button>
-                    <label class="media-toggle">
-                      <input id="loopVideo" type="checkbox" />
-                      <span>Loop</span>
+                  </div>
+                  <div id="videoControls" class="media-control-bar media-control-bar--video" hidden>
+                    <div class="media-control-actions">
+                      <button id="playVideo" type="button" class="media-btn media-btn--accent" disabled>
+                        <span class="media-btn-icon" aria-hidden="true">▶</span>
+                        Play
+                      </button>
+                      <button id="restartVideo" type="button" class="media-btn" disabled>
+                        <span class="media-btn-icon" aria-hidden="true">↻</span>
+                        Restart
+                      </button>
+                      <label class="media-toggle">
+                        <input id="loopVideo" type="checkbox" />
+                        <span>Loop</span>
+                      </label>
+                      <label class="media-toggle">
+                        <input id="videoSound" type="checkbox" checked />
+                        <span>Sound</span>
+                      </label>
+                    </div>
+                    <label class="media-scrub is-disabled">
+                      <span class="media-scrub-label">
+                        Frame
+                        <span class="media-scrub-values">
+                          <output id="videoScrubValue" for="videoScrub">0</output>
+                          <span aria-hidden="true">/</span>
+                          <span id="videoScrubDuration">0</span>
+                        </span>
+                      </span>
+                      <input
+                        id="videoScrub"
+                        type="range"
+                        min="0"
+                        max="0"
+                        step="1"
+                        value="0"
+                        disabled
+                        aria-label="Video frame position"
+                      />
                     </label>
-                    <label class="media-toggle">
-                      <input id="videoSound" type="checkbox" checked />
-                      <span>Sound</span>
+                    <label class="media-speed">
+                      <span class="media-speed-label">
+                        Playback
+                        <output id="playbackSpeedValue" for="playbackSpeed">100%</output>
+                      </span>
+                      <input
+                        id="playbackSpeed"
+                        type="range"
+                        min="10"
+                        max="300"
+                        step="1"
+                        value="100"
+                        disabled
+                        aria-label="Playback speed percentage"
+                      />
                     </label>
                   </div>
-                  <label class="media-scrub is-disabled">
-                    <span class="media-scrub-label">
-                      Frame
-                      <span class="media-scrub-values">
-                        <output id="videoScrubValue" for="videoScrub">0</output>
-                        <span aria-hidden="true">/</span>
-                        <span id="videoScrubDuration">0</span>
-                      </span>
-                    </span>
-                    <input
-                      id="videoScrub"
-                      type="range"
-                      min="0"
-                      max="0"
-                      step="1"
-                      value="0"
-                      disabled
-                      aria-label="Video frame position"
-                    />
-                  </label>
-                  <label class="media-speed">
-                    <span class="media-speed-label">
-                      Playback
-                      <output id="playbackSpeedValue" for="playbackSpeed">100%</output>
-                    </span>
-                    <input
-                      id="playbackSpeed"
-                      type="range"
-                      min="10"
-                      max="300"
-                      step="1"
-                      value="100"
-                      disabled
-                      aria-label="Playback speed percentage"
-                    />
-                  </label>
                 </div>
-              </div>
-              <footer class="tile-footer">
-                <span id="frameMeta">Waiting for camera...</span>
-                <span id="detectionState">Idle</span>
               </footer>
             </article>
 
             <article class="viz-card viz-card--full-skeleton" aria-label="Full body skeleton">
               <header class="tile-header">
                 <h2>Full Skeleton</h2>
+                <label class="tile-header-toggle">
+                  <input id="fullSkeletonJointLabels" type="checkbox" checked />
+                  <span>Joints</span>
+                </label>
                 <span class="tile-badge tile-badge--ready">Live</span>
               </header>
               <div class="tile-player tile-player--full-skeleton">
@@ -193,17 +209,16 @@
               </footer>
             </article>
 
-            <article class="viz-card" aria-label="Rigged textured model">
+            <article class="viz-card" aria-label="Mushy procedural rig">
               <header class="tile-header">
-                <label class="tile-model-picker">
-                  <span class="tile-model-picker-label">Rigged Model</span>
-                  <select id="riggedModelSelect" class="tile-model-select" aria-label="Choose rigged body model">
-                    <option value="mushy">Mushy Rig</option>
-                  </select>
+                <h2>Mushy Rig</h2>
+                <label class="tile-header-toggle">
+                  <input id="riggedJointLabels" type="checkbox" checked />
+                  <span>Joints</span>
                 </label>
                 <span class="tile-badge tile-badge--ready" id="riggedBadge">Ready</span>
               </header>
-              <div class="tile-player tile-player--3d" id="riggedModelMount" aria-label="Primary rigged model"></div>
+              <div class="tile-player tile-player--3d" id="riggedModelMount" aria-label="Mushy rig viewer"></div>
               <footer class="tile-footer">
                 <span id="riggedModelMeta">Mushy Rig · waiting for pose</span>
               </footer>
@@ -305,54 +320,15 @@
               </article>
             </section>
 
-            <section class="dock-row" aria-label="Models and export">
-              <article class="dock-card dock-card--driver" aria-label="Mushy drivers">
-                <header class="dock-header">
-                  <h3>Mushy Drivers</h3>
-                  <span>Primary rig control</span>
-                </header>
-                <div class="driver-body">
-                  <div class="driver-preview" id="driverMount" aria-label="Driver model preview"></div>
-                  <div class="driver-controls">
-                    <p class="driver-name" id="driverName">Mushy Rig</p>
-                    <p class="driver-meta" id="driverMeta">Built-in procedural body rig.</p>
-                    <label class="model-anim-field">
-                      <span>Animation</span>
-                      <select id="driverAnimSelect" class="model-anim-select" disabled>
-                        <option value="">No clips</option>
-                      </select>
-                    </label>
-                    <button id="driverExportBtn" type="button" class="btn btn--small">Export JSON Pose</button>
-                  </div>
-                </div>
-              </article>
-
-              <article class="dock-card dock-card--models" aria-label="Body models">
-                <header class="dock-header">
-                  <h3>Body Models</h3>
-                  <span>Use the hero dropdown or click a card</span>
-                </header>
-                <div id="bodyModelGallery" class="model-gallery" aria-label="Body model gallery"></div>
-                <div id="faceModelGallery" class="model-gallery model-gallery--face" aria-label="Face model gallery"></div>
-              </article>
-
+            <section class="dock-row" aria-label="Export and status">
               <article class="dock-card dock-card--export" aria-label="Export and status">
                 <header class="dock-header">
                   <h3>Export / Status</h3>
                   <span id="systemStatus" class="system-status">All systems operational</span>
                 </header>
-                <dl class="export-paths">
-                  <div>
-                    <dt>Body exports</dt>
-                    <dd><code>public/models/body/</code></dd>
-                  </div>
-                  <div>
-                    <dt>Registry</dt>
-                    <dd><code>public/models/registry.json</code></dd>
-                  </div>
-                </dl>
                 <p class="export-meta">Last export: <span id="lastExportTime">never</span></p>
                 <p class="export-hint">Use Copy JSON or Export JSON Pose to capture landmark data.</p>
+                <button id="exportPoseBtn" type="button" class="btn btn--small">Export JSON Pose</button>
               </article>
             </section>
           </section>

@@ -4,13 +4,6 @@ dist/
 logs/
 public/sample.mp4
 
-# User-dropped Meshy / custom exports (keep README + .gitkeep tracked)
-public/models/body/**
-!public/models/body/
-!public/models/body/README.md
-!public/models/body/.gitkeep
-
-public/models/face/**
-!public/models/face/
-!public/models/face/README.md
-!public/models/face/.gitkeep
+# Local user model drops (not part of the app anymore)
+public/models/body/*.glb
+public/models/face/*.glb

@@ -1,6 +1,8 @@
 import * as THREE from "three";
+import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { HAND_CONNECTIONS, resolveFingerSegment } from "./handRig.js";
 import { FACE_HEAD_KEYS, FACE_HEAD_LANDMARKS, solveFaceRig } from "./faceRig.js";
+import { formatJointLabel } from "./jointLabels.js";
 import { mapHandLandmark as mapHandPoint, mapPoseLandmark, POSE_LM } from "./poseSkeleton.js";
 
 const BODY_POINTS = POSE_LM;
@@ -112,6 +114,7 @@ export class MushyAvatar {
     this.mount = mount;
     this.metaElement = metaElement;
     this.framedViewport = Boolean(options.framedViewport ?? mount?.id === "riggedModelMount");
+    this.showJointLabels = Boolean(options.showJointLabels);
     this._viewport = { x: 0, y: 0, width: 0, height: 0 };
     this.startedAt = performance.now();
     this.lastFrameAt = this.startedAt;
@@ -145,6 +148,13 @@ export class MushyAvatar {
     this._mapScratch = new THREE.Vector3();
     this._handAssignA = new THREE.Vector3();
     this._handAssignB = new THREE.Vector3();
+    this._torsoMid = new THREE.Vector3();
+    this._toCamera = new THREE.Vector3();
+    this._toJoint = new THREE.Vector3();
+    this._jointLabelOffset = new THREE.Vector3(0, 0.11, 0);
+    this.jointLabels = new Map();
+    this.jointLabelLayer = new THREE.Group();
+    this.labelRenderer = null;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x06080e);
@@ -160,6 +170,7 @@ export class MushyAvatar {
     this.root = new THREE.Group();
     this.root.position.y = -0.15;
     this.scene.add(this.root);
+    this.root.add(this.jointLabelLayer);
 
     this.createLights();
     this.createWorld();
@@ -172,7 +183,139 @@ export class MushyAvatar {
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.mount);
+    if (this.showJointLabels) {
+      this.ensureJointLabels();
+      this.applySkeletonVisibility();
+    }
     this.animate();
+  }
+
+  initJointLabelRenderer() {
+    this.labelRenderer = new CSS2DRenderer();
+    const el = this.labelRenderer.domElement;
+    el.className = "rig-joint-label-layer";
+    el.style.position = "absolute";
+    el.style.pointerEvents = "none";
+    this.mount.appendChild(el);
+    this.syncLabelRendererLayout();
+  }
+
+  /** Match CSS2D overlay to the same letterbox rect as the WebGL viewport. */
+  syncLabelRendererLayout() {
+    if (!this.labelRenderer) return;
+
+    const containerW = Math.max(this.mount.clientWidth, 1);
+    const containerH = Math.max(this.mount.clientHeight, 1);
+    const el = this.labelRenderer.domElement;
+
+    if (this.framedViewport && this._viewport.width > 0 && this._viewport.height > 0) {
+      const { x, y, width, height } = this._viewport;
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+      el.style.width = `${width}px`;
+      el.style.height = `${height}px`;
+      this.labelRenderer.setSize(width, height);
+      return;
+    }
+
+    el.style.left = "0";
+    el.style.top = "0";
+    el.style.width = `${containerW}px`;
+    el.style.height = `${containerH}px`;
+    this.labelRenderer.setSize(containerW, containerH);
+  }
+
+  addJointLabel(name) {
+    if (this.jointLabels.has(name)) return;
+    const element = document.createElement("div");
+    element.className = "rig-joint-label";
+    element.textContent = formatJointLabel(name);
+    const label = new CSS2DObject(element);
+    label.visible = false;
+    this.jointLabelLayer.add(label);
+    this.jointLabels.set(name, label);
+  }
+
+  ensureJointLabels() {
+    if (!this.labelRenderer) this.initJointLabelRenderer();
+    this.joints.forEach((_, name) => this.addJointLabel(name));
+    Object.keys(this.caps).forEach((name) => this.addJointLabel(name));
+  }
+
+  setShowJointLabels(value) {
+    const next = Boolean(value);
+    if (this.showJointLabels === next) return;
+    this.showJointLabels = next;
+    if (next) this.ensureJointLabels();
+    else {
+      this.jointLabels.forEach((label) => {
+        label.visible = false;
+      });
+    }
+    this.applySkeletonVisibility();
+  }
+
+  /** When labels are on, hide joint spheres — same idea as Full Skeleton label mode. */
+  applySkeletonVisibility() {
+    const hideMarkers = this.showJointLabels;
+    this.joints.forEach((joint, name) => {
+      if (hideMarkers) joint.visible = false;
+      else joint.visible = this.activePoints.has(name);
+    });
+    Object.entries(this.caps).forEach(([name, cap]) => {
+      if (hideMarkers) cap.visible = false;
+      else cap.visible = this.activePoints.has(name);
+    });
+  }
+
+  writeTorsoMid(out) {
+    if (
+      !this.activePoints.has("leftShoulder") ||
+      !this.activePoints.has("rightShoulder") ||
+      !this.activePoints.has("leftHip") ||
+      !this.activePoints.has("rightHip")
+    ) {
+      return null;
+    }
+    this._handAssignA
+      .copy(this.points.get("leftShoulder"))
+      .add(this.points.get("rightShoulder"))
+      .multiplyScalar(0.5);
+    this._handAssignB.copy(this.points.get("leftHip")).add(this.points.get("rightHip")).multiplyScalar(0.5);
+    return out.addVectors(this._handAssignA, this._handAssignB).multiplyScalar(0.5);
+  }
+
+  /** F = joint toward the camera; B = toward the back. */
+  jointFacingCode(name) {
+    const point = this.points.get(name);
+    if (!point || !this.writeTorsoMid(this._torsoMid)) return null;
+
+    this._toCamera.subVectors(this.camera.position, this._torsoMid);
+    if (this._toCamera.lengthSq() < 1e-8) return null;
+    this._toCamera.normalize();
+
+    this._toJoint.subVectors(point, this._torsoMid);
+    if (this._toJoint.lengthSq() < 1e-6) return null;
+
+    const dot = this._toJoint.dot(this._toCamera);
+    if (Math.abs(dot) < 0.015) return null;
+    return dot > 0 ? "F" : "B";
+  }
+
+  updateJointLabels() {
+    if (!this.showJointLabels || !this.labelRenderer) return;
+    this.jointLabels.forEach((label, name) => {
+      const active = this.activePoints.has(name);
+      label.visible = active;
+      if (!active) return;
+      label.position.copy(this.points.get(name)).add(this._jointLabelOffset);
+
+      const facing = this.jointFacingCode(name);
+      const base = formatJointLabel(name);
+      label.element.textContent = facing ? `${base} (${facing})` : base;
+      label.element.classList.toggle("rig-joint-label--front", facing === "F");
+      label.element.classList.toggle("rig-joint-label--back", facing === "B");
+    });
   }
 
   createLights() {
@@ -611,7 +754,7 @@ export class MushyAvatar {
       this.root.position.y = -0.15;
 
       this.joints.forEach((joint, name) => {
-        joint.visible = this.activePoints.has(name);
+        joint.visible = !this.showJointLabels && this.activePoints.has(name);
       });
 
       this.bones.forEach(({ from, to, mesh }) => {
@@ -623,7 +766,7 @@ export class MushyAvatar {
       });
 
       Object.entries(this.caps).forEach(([name, cap]) => {
-        cap.visible = this.activePoints.has(name);
+        cap.visible = !this.showJointLabels && this.activePoints.has(name);
         if (cap.visible) cap.position.copy(this.points.get(name));
       });
 
@@ -674,6 +817,7 @@ export class MushyAvatar {
     }
 
     this.updateHandRigs(delta);
+    this.updateJointLabels();
   }
 
   hideHandRigs() {
@@ -792,6 +936,11 @@ export class MushyAvatar {
 
     this.renderer.render(this.scene, this.camera);
     this.renderer.setScissorTest(false);
+
+    if (this.labelRenderer && this.showJointLabels) {
+      this.syncLabelRendererLayout();
+      this.labelRenderer.render(this.scene, this.camera);
+    }
   }
 
   setPaused(paused) {
@@ -807,6 +956,13 @@ export class MushyAvatar {
     this.stopped = true;
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.resizeObserver?.disconnect();
+    if (this.labelRenderer) {
+      if (this.labelRenderer.domElement.parentNode === this.mount) {
+        this.mount.removeChild(this.labelRenderer.domElement);
+      }
+      this.labelRenderer = null;
+    }
+    this.jointLabels.clear();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode === this.mount) {
       this.mount.removeChild(this.renderer.domElement);
@@ -886,5 +1042,6 @@ export class MushyAvatar {
     const height = Math.max(this.mount.clientHeight, 1);
     this.renderer.setSize(width, height, false);
     this.updateViewportRect();
+    this.syncLabelRendererLayout();
   }
 }

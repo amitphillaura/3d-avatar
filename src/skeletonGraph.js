@@ -1,4 +1,4 @@
-/** Shared pose topology for skeleton panes and GLB retargeting. */
+/** Shared pose topology for skeleton panes and Mushy rig segments. */
 
 export const POSE = {
   nose: 0,

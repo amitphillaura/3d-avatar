@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased — Rigged Model fixes & big-viewer layout
+## Unreleased — Mushy-only (GLB removed)
+
+### Removed
+- **All GLB / skinned-model support** — deleted gallery, registry, body scan, Kalidokit
+  driver, bundled Mixamo Xbot, and Meshy workflow docs. Hero viewer is **Mushy Rig only**
+  via `src/rigHost.js`.
+
+## Previous — Rigged Model fixes & big-viewer layout
 
 ### Fixed (Rigged Model panel)
 - **Camera "zoomed all over."** The hero viewport re-fit the noisy landmark bounding
