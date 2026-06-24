@@ -1,5 +1,6 @@
 import "./styles.css";
 import { RigHost } from "./rigHost.js";
+import { captureVideoPoster, getProjectMedia } from "./mediaLibrary.js";
 import {
   facingFromMediaPipeZ,
   formatJointLabelWithFacing,
@@ -40,6 +41,7 @@ const SWAP_HANDS_STORAGE_KEY = "live-pose-swap-hands";
 const FULL_SKELETON_LABELS_KEY = "live-pose-full-skeleton-labels";
 const RIGGED_LABELS_KEY = "live-pose-rigged-labels";
 const RAW_CONTROLS_EXPANDED_KEY = "live-pose-raw-controls-expanded";
+const RIG_VARIANT_KEY = "live-pose-rig-variant";
 
 let showFullSkeletonJointLabels = true;
 
@@ -83,12 +85,14 @@ const riggedModelMountEl = document.getElementById("riggedModelMount");
 const riggedModelMetaEl = document.getElementById("riggedModelMeta");
 const fullSkeletonJointLabelsToggle = document.getElementById("fullSkeletonJointLabels");
 const riggedJointLabelsToggle = document.getElementById("riggedJointLabels");
+const rigVariantSelect = document.getElementById("rigVariant");
 const rawControlsToggle = document.getElementById("rawControlsToggle");
 const rawControlsPanel = document.getElementById("rawControlsPanel");
 const exportPoseBtn = document.getElementById("exportPoseBtn");
 const lastExportTimeEl = document.getElementById("lastExportTime");
 const modelsLoadedIndicatorEl = document.getElementById("modelsLoadedIndicator");
 const modelsLoadedTextEl = document.getElementById("modelsLoadedText");
+const mediaLibraryEl = document.getElementById("mediaLibrary");
 
 let latestResults = null;
 let cameraInstance = null;
@@ -1917,6 +1921,22 @@ function bindEvents() {
     rigHost?.setShowJointLabels?.(riggedJointLabelsToggle.checked);
   });
 
+  rigVariantSelect?.addEventListener("change", () => {
+    try {
+      localStorage.setItem(RIG_VARIANT_KEY, rigVariantSelect.value);
+    } catch {
+      // ignore storage failures
+    }
+    rigHost?.setVariant?.(rigVariantSelect.value);
+    // The avatar instance was rebuilt — repoint the debug hook and re-feed the current
+    // frame so a paused video/still shows the new rig immediately (camera streams anyway).
+    window.__avatar = rigHost?.avatar ?? null;
+    const label =
+      rigVariantSelect.options[rigVariantSelect.selectedIndex]?.text || rigVariantSelect.value;
+    setStatus(`Rig: ${label}.`);
+    if (getFrameSource()) processCurrentFrame();
+  });
+
   rawControlsToggle?.addEventListener("click", () => {
     const expanded = Boolean(rawControlsPanel?.hidden);
     setRawControlsExpanded(expanded);
@@ -2071,7 +2091,8 @@ function setupLandmarkPopups() {
 async function initRigHost() {
   rigHost = new RigHost({
     mount: riggedModelMountEl,
-    metaElement: riggedModelMetaEl
+    metaElement: riggedModelMetaEl,
+    variant: rigVariantSelect?.value || "mushy"
   });
   rigHost.prepare({
     showJointLabels: riggedJointLabelsToggle?.checked ?? true,
@@ -2081,6 +2102,97 @@ async function initRigHost() {
   window.__avatar = rigHost.avatar;
   window.__rigHost = rigHost;
   setModelsLoaded(true);
+}
+
+function setActiveMediaItem(url) {
+  if (!mediaLibraryEl) return;
+  mediaLibraryEl.querySelectorAll(".media-item").forEach((el) => {
+    el.classList.toggle("is-active", el.dataset.url === url);
+  });
+}
+
+function buildMediaItem(entry) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "media-item";
+  item.dataset.url = entry.url;
+  item.setAttribute("role", "listitem");
+  item.title = entry.name;
+
+  const thumb = document.createElement("div");
+  thumb.className = "media-thumb";
+
+  const kind = document.createElement("span");
+  kind.className =
+    entry.kind === "image" ? "media-thumb-kind media-thumb-kind--image" : "media-thumb-kind";
+  kind.textContent = entry.kind === "image" ? "IMG" : "VID";
+  thumb.appendChild(kind);
+
+  if (entry.kind === "image") {
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.alt = entry.name;
+    img.src = entry.url;
+    thumb.appendChild(img);
+  } else {
+    const icon = document.createElement("span");
+    icon.className = "media-thumb-icon";
+    icon.textContent = "🎬";
+    thumb.appendChild(icon);
+    // Best-effort poster frame: swap the icon for a captured frame if one comes back.
+    captureVideoPoster(entry.url).then((poster) => {
+      if (!poster || !icon.isConnected) return;
+      const img = document.createElement("img");
+      img.alt = entry.name;
+      img.src = poster;
+      icon.replaceWith(img);
+    });
+  }
+
+  const name = document.createElement("span");
+  name.className = "media-name";
+  name.textContent = entry.name;
+
+  item.append(thumb, name);
+  item.addEventListener("click", () => {
+    setActiveMediaItem(entry.url);
+    if (entry.kind === "image") {
+      loadImageURL(entry.url, entry.name);
+    } else {
+      loadVideoURL(entry.url);
+    }
+    setStatus(`Loading ${entry.kind}: ${entry.name}`, "warning");
+  });
+  return item;
+}
+
+// Render the project media gallery from the /media folders. Drop-in files appear
+// automatically (Vite watches the glob); clicking a tile loads it through the pipeline.
+function renderMediaLibrary() {
+  if (!mediaLibraryEl) return;
+  const { videos, images } = getProjectMedia();
+  mediaLibraryEl.textContent = "";
+
+  if (!videos.length && !images.length) {
+    const empty = document.createElement("p");
+    empty.className = "media-library-empty";
+    empty.innerHTML =
+      "No media yet. Drop clips in <code>media/videos</code> or stills in <code>media/images</code> — they show up here automatically.";
+    mediaLibraryEl.appendChild(empty);
+    return;
+  }
+
+  const addGroup = (label, entries) => {
+    if (!entries.length) return;
+    const heading = document.createElement("p");
+    heading.className = "media-group-label";
+    heading.textContent = `${label} (${entries.length})`;
+    mediaLibraryEl.appendChild(heading);
+    entries.forEach((entry) => mediaLibraryEl.appendChild(buildMediaItem(entry)));
+  };
+
+  addGroup("Videos", videos);
+  addGroup("Images", images);
 }
 
 // Dev hook: load a same-origin video URL through the normal video pipeline.
@@ -2152,7 +2264,18 @@ function init() {
   if (riggedJointLabelsToggle) {
     riggedJointLabelsToggle.checked = readStoredBool(RIGGED_LABELS_KEY, true);
   }
+  if (rigVariantSelect) {
+    try {
+      const stored = localStorage.getItem(RIG_VARIANT_KEY);
+      if (stored && [...rigVariantSelect.options].some((opt) => opt.value === stored)) {
+        rigVariantSelect.value = stored;
+      }
+    } catch {
+      // ignore storage failures
+    }
+  }
   setRawControlsExpanded(readStoredBool(RAW_CONTROLS_EXPANDED_KEY, false));
+  renderMediaLibrary();
   bindEvents();
   setupLandmarkPopups();
   applyPlaybackSpeed();

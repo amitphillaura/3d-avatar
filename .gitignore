@@ -7,3 +7,10 @@ public/sample.mp4
 # Local user model drops (not part of the app anymore)
 public/models/body/*.glb
 public/models/face/*.glb
+
+# Project media drops — large/personal; keep the folders, ignore the binaries
+media/videos/*
+media/images/*
+!media/videos/.gitkeep
+!media/images/.gitkeep
+!media/README.md

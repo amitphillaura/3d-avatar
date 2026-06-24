@@ -25,8 +25,8 @@
             <label class="field">
               <span>Source</span>
               <select id="source">
-                <option value="camera" selected>Webcam</option>
-                <option value="video">Video File</option>
+                <option value="video" selected>Video File</option>
+                <option value="camera">Webcam</option>
                 <option value="image">Photo / Image</option>
               </select>
             </label>
@@ -50,6 +50,18 @@
               <input id="swapHands" type="checkbox" />
               <span>Swap Hands (L/R)</span>
             </label>
+          </div>
+
+          <div class="sidebar-section sidebar-section--media">
+            <div class="media-library" aria-label="Project media">
+              <div class="media-library-head">
+                <span>Project Media</span>
+                <code class="media-library-path">/media</code>
+              </div>
+              <div class="media-library-body" id="mediaLibrary" role="list">
+                <p class="media-library-empty">Loading project media…</p>
+              </div>
+            </div>
           </div>
 
           <div class="sidebar-section">
@@ -209,18 +221,22 @@
               </footer>
             </article>
 
-            <article class="viz-card" aria-label="Mushy procedural rig">
+            <article class="viz-card" aria-label="Procedural rig">
               <header class="tile-header">
-                <h2>Mushy Rig</h2>
+                <h2>Rig</h2>
+                <select id="rigVariant" class="tile-header-select" aria-label="Rig variant">
+                  <option value="mushy" selected>Mushy</option>
+                  <option value="mushyKid">MushyKid</option>
+                </select>
                 <label class="tile-header-toggle">
                   <input id="riggedJointLabels" type="checkbox" checked />
                   <span>Joints</span>
                 </label>
                 <span class="tile-badge tile-badge--ready" id="riggedBadge">Ready</span>
               </header>
-              <div class="tile-player tile-player--3d" id="riggedModelMount" aria-label="Mushy rig viewer"></div>
+              <div class="tile-player tile-player--3d" id="riggedModelMount" aria-label="Rig viewer"></div>
               <footer class="tile-footer">
-                <span id="riggedModelMeta">Mushy Rig · waiting for pose</span>
+                <span id="riggedModelMeta">Rig · waiting for pose</span>
               </footer>
             </article>
           </section>
