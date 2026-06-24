@@ -40,7 +40,6 @@ const videoSoundToggle = document.getElementById("videoSound");
 const SWAP_HANDS_STORAGE_KEY = "live-pose-swap-hands";
 const FULL_SKELETON_LABELS_KEY = "live-pose-full-skeleton-labels";
 const RIGGED_LABELS_KEY = "live-pose-rigged-labels";
-const RAW_CONTROLS_EXPANDED_KEY = "live-pose-raw-controls-expanded";
 const RIG_VARIANT_KEY = "live-pose-rig-variant";
 
 let showFullSkeletonJointLabels = true;
@@ -86,8 +85,6 @@ const riggedModelMetaEl = document.getElementById("riggedModelMeta");
 const fullSkeletonJointLabelsToggle = document.getElementById("fullSkeletonJointLabels");
 const riggedJointLabelsToggle = document.getElementById("riggedJointLabels");
 const rigVariantSelect = document.getElementById("rigVariant");
-const rawControlsToggle = document.getElementById("rawControlsToggle");
-const rawControlsPanel = document.getElementById("rawControlsPanel");
 const exportPoseBtn = document.getElementById("exportPoseBtn");
 const lastExportTimeEl = document.getElementById("lastExportTime");
 const modelsLoadedIndicatorEl = document.getElementById("modelsLoadedIndicator");
@@ -551,6 +548,15 @@ function syncVizPlayerLayout() {
   const height = Math.max(1, Math.round(refPlayer.clientHeight));
   document.documentElement.style.setProperty("--viz-player-height", `${height}px`);
   document.documentElement.style.setProperty("--viz-aspect", String(getSourceAspectRatio()));
+
+  // The Raw tile's footer holds the always-on media controls, so it's taller than the
+  // other tiles' one-line footers. Publish its height so the Full Skeleton + Rig footers
+  // match it (CSS), keeping all three players the same size and aligned.
+  const rawFooter = document.querySelector(".viz-card--raw .tile-footer");
+  if (rawFooter) {
+    const footerH = Math.max(1, Math.round(rawFooter.getBoundingClientRect().height));
+    document.documentElement.style.setProperty("--tile-footer-h", `${footerH}px`);
+  }
 
   window.__avatar?.resize?.();
 
@@ -1937,16 +1943,6 @@ function bindEvents() {
     if (getFrameSource()) processCurrentFrame();
   });
 
-  rawControlsToggle?.addEventListener("click", () => {
-    const expanded = Boolean(rawControlsPanel?.hidden);
-    setRawControlsExpanded(expanded);
-    try {
-      localStorage.setItem(RAW_CONTROLS_EXPANDED_KEY, expanded ? "1" : "0");
-    } catch {
-      // ignore storage failures
-    }
-  });
-
   loopVideoToggle?.addEventListener("change", () => {
     videoElement.loop = loopVideoToggle.checked;
     setStatus(`Video loop: ${loopVideoToggle.checked ? "on" : "off"}.`);
@@ -2238,15 +2234,6 @@ function readStoredBool(key, defaultValue = true) {
   }
 }
 
-function setRawControlsExpanded(expanded) {
-  if (!rawControlsPanel || !rawControlsToggle) return;
-  rawControlsPanel.hidden = !expanded;
-  rawControlsToggle.setAttribute("aria-expanded", String(expanded));
-  rawControlsToggle.textContent = expanded ? "Hide controls" : "Controls";
-  document.querySelector(".viz-card--raw")?.classList.toggle("viz-card--raw-controls-open", expanded);
-  requestAnimationFrame(() => syncVizPlayerLayout());
-}
-
 function init() {
   if (swapHandsToggle) {
     try {
@@ -2274,7 +2261,6 @@ function init() {
       // ignore storage failures
     }
   }
-  setRawControlsExpanded(readStoredBool(RAW_CONTROLS_EXPANDED_KEY, false));
   renderMediaLibrary();
   bindEvents();
   setupLandmarkPopups();
