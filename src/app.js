@@ -276,6 +276,31 @@ function syncVideoScrubControls() {
   if (videoScrubDurationEl) videoScrubDurationEl.textContent = String(frameCount);
 }
 
+// Set currentTime and resolve only once the video has actually painted the sought frame.
+// Setting currentTime is async; running MediaPipe before the seek completes reads the OLD
+// frame, so the rig lags or appears frozen while scrubbing a paused video.
+function waitForVideoSeek(time) {
+  const target = Math.min(Math.max(time, 0), Math.max(videoElement.duration - 0.001, 0) || time);
+  return new Promise((resolve) => {
+    if (Math.abs(videoElement.currentTime - target) < 1e-3) {
+      resolve();
+      return;
+    }
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      videoElement.removeEventListener("seeked", finish);
+      resolve();
+    };
+    // Fallback in case 'seeked' never fires (e.g. identical frame / codec quirk).
+    const timer = window.setTimeout(finish, 250);
+    videoElement.addEventListener("seeked", finish, { once: true });
+    videoElement.currentTime = target;
+  });
+}
+
 async function seekVideoFrame(frame, { playAfter = false } = {}) {
   if (!videoLoaded) return;
 
@@ -286,7 +311,7 @@ async function seekVideoFrame(frame, { playAfter = false } = {}) {
   const time = Math.min(frameToTime(clampedFrame), Math.max(videoElement.duration - 0.001, 0));
 
   stopVideoPlayback();
-  videoElement.currentTime = time;
+  await waitForVideoSeek(time);
   syncVideoScrubControls();
   await processCurrentFrame();
 
@@ -1855,10 +1880,9 @@ function bindEvents() {
     videoScrubbing = true;
     const frame = Number(videoScrubInput.value);
     if (videoScrubValueEl) videoScrubValueEl.textContent = String(frame);
-    videoElement.currentTime = Math.min(
-      frameToTime(frame),
-      Math.max(videoElement.duration - 0.001, 0)
-    );
+    // Wait for the frame to actually paint before tracking, so the rig follows the scrub
+    // instead of staying frozen on the pre-seek frame.
+    await waitForVideoSeek(frameToTime(frame));
     await processCurrentFrame();
   });
 
