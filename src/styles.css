@@ -957,6 +957,81 @@ input[type="file"]:focus-visible {
 .primary-row .viz-card:not(.viz-card--raw) .tile-footer {
   height: var(--tile-footer-h, auto);
   justify-content: center;
+  gap: 6px;
+}
+
+/* Per-tile zoom slider (Full Skeleton + Rig). Centered = Normal (100%); drag left to
+   zoom out, right to zoom in; the ⟲ button resets to Normal. */
+.tile-zoom {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+}
+
+.tile-zoom-label {
+  flex-shrink: 0;
+  min-width: 64px;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile-zoom-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(89, 166, 255, 0.45), rgba(0, 240, 168, 0.55));
+  cursor: pointer;
+}
+
+.tile-zoom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff, var(--accent-2));
+  box-shadow: 0 0 10px rgba(89, 166, 255, 0.45);
+}
+
+.tile-zoom-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff, var(--accent-2));
+  box-shadow: 0 0 10px rgba(89, 166, 255, 0.45);
+}
+
+.tile-zoom-reset {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #0a0e14;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tile-zoom-reset:hover {
+  color: var(--text);
+  border-color: rgba(0, 240, 168, 0.45);
 }
 
 #detectionState {

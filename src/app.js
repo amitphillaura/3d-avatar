@@ -41,6 +41,63 @@ const SWAP_HANDS_STORAGE_KEY = "live-pose-swap-hands";
 const FULL_SKELETON_LABELS_KEY = "live-pose-full-skeleton-labels";
 const RIGGED_LABELS_KEY = "live-pose-rigged-labels";
 const RIG_VARIANT_KEY = "live-pose-rig-variant";
+const SKELETON_ZOOM_KEY = "live-pose-skeleton-zoom";
+const RIG_ZOOM_KEY = "live-pose-rig-zoom";
+
+// Zoom slider is symmetric (level -100..100, 0 = Normal). Map to a camera/draw factor so
+// "Normal" sits dead-center while zoom-in gets more headroom than zoom-out. Kept modest.
+const ZOOM_MIN_FACTOR = 0.5;
+const ZOOM_MAX_FACTOR = 2;
+let skeletonZoom = 1;
+
+function zoomLevelToFactor(level) {
+  const l = Math.max(-100, Math.min(100, Number(level) || 0));
+  return l >= 0
+    ? 1 + (l / 100) * (ZOOM_MAX_FACTOR - 1)
+    : 1 + (l / 100) * (1 - ZOOM_MIN_FACTOR);
+}
+
+function readStoredZoomLevel(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? Math.max(-100, Math.min(100, n)) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function updateZoomLabel(el, factor) {
+  if (el) el.textContent = `Zoom ${Math.round(factor * 100)}%`;
+}
+
+function applySkeletonZoom(level, { persist = true } = {}) {
+  const factor = zoomLevelToFactor(level);
+  skeletonZoom = factor;
+  updateZoomLabel(skeletonZoomLabel, factor);
+  if (persist) {
+    try {
+      localStorage.setItem(SKELETON_ZOOM_KEY, String(level));
+    } catch {
+      // ignore storage failures
+    }
+  }
+  drawFullSkeleton();
+}
+
+function applyRigZoom(level, { persist = true } = {}) {
+  const factor = zoomLevelToFactor(level);
+  updateZoomLabel(rigZoomLabel, factor);
+  rigHost?.setZoom?.(factor);
+  if (persist) {
+    try {
+      localStorage.setItem(RIG_ZOOM_KEY, String(level));
+    } catch {
+      // ignore storage failures
+    }
+  }
+}
 
 let showFullSkeletonJointLabels = true;
 
@@ -85,6 +142,12 @@ const riggedModelMetaEl = document.getElementById("riggedModelMeta");
 const fullSkeletonJointLabelsToggle = document.getElementById("fullSkeletonJointLabels");
 const riggedJointLabelsToggle = document.getElementById("riggedJointLabels");
 const rigVariantSelect = document.getElementById("rigVariant");
+const skeletonZoomInput = document.getElementById("skeletonZoom");
+const skeletonZoomReset = document.getElementById("skeletonZoomReset");
+const skeletonZoomLabel = document.getElementById("skeletonZoomLabel");
+const rigZoomInput = document.getElementById("rigZoom");
+const rigZoomReset = document.getElementById("rigZoomReset");
+const rigZoomLabel = document.getElementById("rigZoomLabel");
 const exportPoseBtn = document.getElementById("exportPoseBtn");
 const lastExportTimeEl = document.getElementById("lastExportTime");
 const modelsLoadedIndicatorEl = document.getElementById("modelsLoadedIndicator");
@@ -468,6 +531,18 @@ function createUnifiedProjector(drawRect, pad = 18, aspect = 1, ...sets) {
   const merged = mergeLandmarkSets(...sets);
   if (!merged.length) return null;
   return createLandmarkProjector(merged, drawRect, pad, aspect);
+}
+
+// Wrap a projector so its output scales about the draw-rect center by `zoom`
+// (1 = unchanged). Lets the Full Skeleton zoom without re-fitting the landmarks.
+function zoomedProjector(project, drawRect, zoom) {
+  if (!project || zoom === 1) return project;
+  const cx = drawRect.x + drawRect.width / 2;
+  const cy = drawRect.y + drawRect.height / 2;
+  return (landmark) => {
+    const p = project(landmark);
+    return { x: cx + (p.x - cx) * zoom, y: cy + (p.y - cy) * zoom };
+  };
 }
 
 function drawConnectorSet(ctx, project, landmarks, connections, color, lineWidth = 2) {
@@ -1145,11 +1220,19 @@ function drawFullSkeleton() {
   const aspect = getSourceAspectRatio();
   const drawRect = getAspectDrawRect(canvas.width, canvas.height, aspect);
   paintSkeletonBackdrop(ctx, canvas, drawRect);
-  const project = createUnifiedProjector(drawRect, 16, aspect, pose, face, leftHand, rightHand);
-  if (!project) {
+  const baseProject = createUnifiedProjector(drawRect, 16, aspect, pose, face, leftHand, rightHand);
+  if (!baseProject) {
     clearSkeleton(ctx, canvas, "No tracking");
     return;
   }
+  const project = zoomedProjector(baseProject, drawRect, skeletonZoom);
+
+  // Keep zoomed-in strokes inside the letterboxed draw area instead of bleeding into
+  // the surrounding tile bars.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(drawRect.x, drawRect.y, drawRect.width, drawRect.height);
+  ctx.clip();
 
   if (pose) {
     drawConnectorSet(ctx, project, pose, SKELETON_BONES, "#00f0a8", 3.2);
@@ -1192,6 +1275,8 @@ function drawFullSkeleton() {
   // band across the torso. Nearest-wrist pairing is swap-invariant.
   bridgeHandToNearestWrist(ctx, project, pose, leftHand, "#ff7bd5");
   bridgeHandToNearestWrist(ctx, project, pose, rightHand, "#59a6ff");
+
+  ctx.restore();
 }
 
 function updateKeypointsPanel() {
@@ -1943,6 +2028,18 @@ function bindEvents() {
     if (getFrameSource()) processCurrentFrame();
   });
 
+  skeletonZoomInput?.addEventListener("input", () => applySkeletonZoom(skeletonZoomInput.value));
+  skeletonZoomReset?.addEventListener("click", () => {
+    if (skeletonZoomInput) skeletonZoomInput.value = "0";
+    applySkeletonZoom(0);
+  });
+
+  rigZoomInput?.addEventListener("input", () => applyRigZoom(rigZoomInput.value));
+  rigZoomReset?.addEventListener("click", () => {
+    if (rigZoomInput) rigZoomInput.value = "0";
+    applyRigZoom(0);
+  });
+
   loopVideoToggle?.addEventListener("change", () => {
     videoElement.loop = loopVideoToggle.checked;
     setStatus(`Video loop: ${loopVideoToggle.checked ? "on" : "off"}.`);
@@ -2095,6 +2192,7 @@ async function initRigHost() {
     trackFingers: Boolean(trackFingersToggle?.checked)
   });
   rigHost.init();
+  if (rigZoomInput) rigHost.setZoom(zoomLevelToFactor(rigZoomInput.value));
   window.__avatar = rigHost.avatar;
   window.__rigHost = rigHost;
   setModelsLoaded(true);
@@ -2260,6 +2358,17 @@ function init() {
     } catch {
       // ignore storage failures
     }
+  }
+  if (skeletonZoomInput) {
+    const level = readStoredZoomLevel(SKELETON_ZOOM_KEY);
+    skeletonZoomInput.value = String(level);
+    skeletonZoom = zoomLevelToFactor(level);
+    updateZoomLabel(skeletonZoomLabel, skeletonZoom);
+  }
+  if (rigZoomInput) {
+    const level = readStoredZoomLevel(RIG_ZOOM_KEY);
+    rigZoomInput.value = String(level);
+    updateZoomLabel(rigZoomLabel, zoomLevelToFactor(level));
   }
   renderMediaLibrary();
   bindEvents();

@@ -18,6 +18,7 @@ export class RigHost {
     this.avatar = null;
     this.showJointLabels = false;
     this.trackFingers = false;
+    this.zoom = 1;
     this.variant = RIG_VARIANTS[variant] ? variant : DEFAULT_RIG_VARIANT;
   }
 
@@ -28,10 +29,17 @@ export class RigHost {
 
   createAvatar() {
     const { AvatarClass } = RIG_VARIANTS[this.variant];
-    return new AvatarClass(this.mount, this.metaElement, {
+    const avatar = new AvatarClass(this.mount, this.metaElement, {
       framedViewport: true,
       showJointLabels: this.showJointLabels
     });
+    avatar.setZoom?.(this.zoom); // carry the current zoom across variant rebuilds
+    return avatar;
+  }
+
+  setZoom(value) {
+    this.zoom = Number(value) || 1;
+    this.avatar?.setZoom?.(this.zoom);
   }
 
   // Tear down the current avatar and rebuild with the chosen variant on the same mount,

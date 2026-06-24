@@ -145,6 +145,7 @@ export class MushyAvatar {
     this._headTargetQuat = new THREE.Quaternion();
     this._headLookMatrix = new THREE.Matrix4();
     this.paused = false;
+    this.zoom = 1; // camera zoom multiplier (>1 closer/bigger, <1 farther/smaller)
     this._mapScratch = new THREE.Vector3();
     this._handAssignA = new THREE.Vector3();
     this._handAssignB = new THREE.Vector3();
@@ -943,6 +944,11 @@ export class MushyAvatar {
     }
   }
 
+  setZoom(value) {
+    const v = Number(value);
+    this.zoom = Number.isFinite(v) ? Math.min(Math.max(v, 0.5), 2) : 1;
+  }
+
   setPaused(paused) {
     if (this.stopped || this.paused === paused) return;
     this.paused = paused;
@@ -1001,7 +1007,7 @@ export class MushyAvatar {
     const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * this.camera.aspect);
     const distV = (bodySpan * 0.92) / (2 * Math.tan(vFovRad / 2));
     const distH = (bodySpan * 0.62) / (2 * Math.tan(hFovRad / 2));
-    const distance = Math.max(Math.max(distV, distH), 1.4);
+    const distance = Math.max(Math.max(distV, distH), 1.4) / (this.zoom || 1);
     this.camera.position.set(0, lookY, lookZ + distance);
     this.camera.lookAt(0, lookY, lookZ);
   }
@@ -1031,7 +1037,7 @@ export class MushyAvatar {
     const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * Math.max(this.camera.aspect, 0.01));
     const distV = halfY / Math.tan(vFovRad / 2);
     const distH = halfX / Math.tan(hFovRad / 2);
-    const distance = Math.max(distV, distH, 1.4);
+    const distance = Math.max(distV, distH, 1.4) / (this.zoom || 1);
 
     this.camera.position.set(centerX, centerY, centerZ + distance);
     this.camera.lookAt(centerX, centerY, centerZ);

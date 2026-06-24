@@ -208,6 +208,20 @@
                 ></canvas>
               </div>
               <footer class="tile-footer">
+                <div class="tile-zoom">
+                  <span class="tile-zoom-label" id="skeletonZoomLabel">Zoom 100%</span>
+                  <input
+                    id="skeletonZoom"
+                    class="tile-zoom-slider"
+                    type="range"
+                    min="-100"
+                    max="100"
+                    step="5"
+                    value="0"
+                    aria-label="Full skeleton zoom (center = normal)"
+                  />
+                  <button id="skeletonZoomReset" class="tile-zoom-reset" type="button" title="Reset zoom" aria-label="Reset zoom">⟲</button>
+                </div>
                 <span id="fullSkeletonMeta">Body + head + hands · waiting for tracking</span>
               </footer>
             </article>
@@ -227,6 +241,20 @@
               </header>
               <div class="tile-player tile-player--3d" id="riggedModelMount" aria-label="Rig viewer"></div>
               <footer class="tile-footer">
+                <div class="tile-zoom">
+                  <span class="tile-zoom-label" id="rigZoomLabel">Zoom 100%</span>
+                  <input
+                    id="rigZoom"
+                    class="tile-zoom-slider"
+                    type="range"
+                    min="-100"
+                    max="100"
+                    step="5"
+                    value="0"
+                    aria-label="Rig zoom (center = normal)"
+                  />
+                  <button id="rigZoomReset" class="tile-zoom-reset" type="button" title="Reset zoom" aria-label="Reset zoom">⟲</button>
+                </div>
                 <span id="riggedModelMeta">Rig · waiting for pose</span>
               </footer>
             </article>
