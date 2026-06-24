@@ -443,6 +443,12 @@ export class MushyModelAvatar extends MushyAvatar {
    * Returns true when at least some rotations were applied.
    */
   _driveKalidokit() {
+    // The VRM->rig axis correction (KALIDO_AXIS_FIX) was calibrated and verified ONLY for
+    // the Mixamo rig (identity bind pose; scripts/retarget-test.mjs). Meshy bind poses differ
+    // and would need their own empirically-verified correction — which can't be tested
+    // locally (Meshy GLBs are gitignored). Until that's verified, non-Mixamo rigs fall back
+    // to the rig-agnostic aimSegment solver rather than risk a wrong-axis (swapped) pose.
+    if (this.rig !== "mixamo") return false;
     if (!this.kalidoBones.length || !this.worldLandmarks || !this.rawPoseLandmarks) return false;
     if (this.worldLandmarks.length < 17 || this.rawPoseLandmarks.length < 17) return false;
 
