@@ -30,6 +30,13 @@ const KALIDOKIT_BONE_DEFS = [
   ["LeftLowerLeg",   "mixamorigLeftLeg",      "LeftLeg"],
 ];
 
+// Kalidokit emits rotations in VRM (0.x, -Z-facing) convention; Mixamo/Meshy rigs face +Z.
+// A 180-deg rotation about Y reconciles the two world frames. Determined empirically against
+// the bundled Mixamo rig (scripts/retarget-probe.mjs): of {I, Ry180, Rx180, Rz180}, only
+// Ry180 makes a raised arm go up AND a forward arm go toward camera, on both sides.
+const KALIDO_AXIS_FIX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+const KALIDO_AXIS_FIX_INV = KALIDO_AXIS_FIX.clone().invert();
+
 function midpoint(out, a, b) {
   return out.addVectors(a, b).multiplyScalar(0.5);
 }
@@ -272,9 +279,22 @@ export class MushyModelAvatar extends MushyAvatar {
 
     // Build Kalidokit bone map: VRM output key → Three.js bone object.
     // resolveModelBone tries each candidate name, so Mixamo and Meshy both work.
+    // Capture each bone's BIND-POSE parent world quaternion (Wp) and rest local quaternion
+    // (L_rest). These drive the three-vrm normalized->raw change-of-basis in _driveKalidokit.
+    // The model is in its rest pose here (captureBindPose ran; resetModelBindPose hasn't),
+    // and fitModelToSkeleton already called updateMatrixWorld, so world quats are valid.
     this.kalidoBones = KALIDOKIT_BONE_DEFS.flatMap(([vrmKey, ...names]) => {
       const bone = names.reduce((found, n) => found || resolveModelBone(this.model, n), null);
-      return bone ? [{ vrmKey, bone }] : [];
+      if (!bone) return [];
+      const parentWorld = new THREE.Quaternion();
+      (bone.parent || this.model).getWorldQuaternion(parentWorld);
+      return [{
+        vrmKey,
+        bone,
+        parentWorld,
+        parentWorldInv: parentWorld.clone().invert(),
+        restLocal: bone.quaternion.clone()
+      }];
     });
 
     const spine = findSpineBone(this.model);
@@ -439,14 +459,21 @@ export class MushyModelAvatar extends MushyAvatar {
     if (!solved) return false;
 
     const _e = new THREE.Euler(0, 0, 0, "XYZ");
-    const _q = new THREE.Quaternion();
-    this.kalidoBones.forEach(({ vrmKey, bone }) => {
+    const _rk = new THREE.Quaternion();
+    const _target = new THREE.Quaternion();
+    this.kalidoBones.forEach(({ vrmKey, bone, parentWorld, parentWorldInv, restLocal }) => {
       // Hips has a nested { position, rotation } shape; everything else is a plain Vector3.
       const rot = vrmKey === "Hips" ? solved.Hips?.rotation : solved[vrmKey];
       if (!rot) return;
-      _e.set(rot.x, rot.y, rot.z);
-      _q.setFromEuler(_e);
-      bone.quaternion.slerp(_q, 0.45);
+      _e.set(rot.x, rot.y, rot.z, "XYZ");
+      _rk.setFromEuler(_e);
+      // Re-express the VRM-frame rotation in the rig's world frame: R_k2 = C * R_k * C^-1.
+      _rk.premultiply(KALIDO_AXIS_FIX).multiply(KALIDO_AXIS_FIX_INV);
+      // three-vrm normalized->raw change-of-basis. Literal verified method-chain order
+      // (VRMHumanoidRig.ts): target = Wp^-1 * R_k2 * Wp * L_rest. For an identity-bind rig
+      // (Mixamo) this collapses to R_k2; for Meshy it applies the real rest offsets.
+      _target.copy(_rk).multiply(parentWorld).premultiply(parentWorldInv).multiply(restLocal);
+      bone.quaternion.slerp(_target, 0.45);
     });
 
     return true;
