@@ -4,11 +4,18 @@
 > agent can follow it mechanically** and ship a working, good-looking character without
 > understanding the whole codebase. Read this top to bottom once, then use it as a recipe.
 
-This pipeline has produced **22 characters** so far (Mushy, MushyKid, MushyPrime, MushyGhost,
+This pipeline has produced **32 characters** so far (Mushy, MushyKid, MushyPrime, MushyGhost,
 MushyAstro, MushyDragon, MushyNeon, MushySlime, MushyShade, MushyBloom, MushyWurm, MushyCog,
 MushyVoxel, MushyGem, MushyTrail, MushyFuzz, MushyAqua, MushyEmber, MushyNimbus, MushyPix,
-MushyJack, MushyStar). Every one is a **clone of `src/avatar.js`** with a custom look and one
-animated technique. You will do exactly the same thing.
+MushyJack, MushyStar, MushyKnight, MushyMushroom, MushyOcto, MushyBee, MushyMagma, MushyTV,
+MushyAngel, MushyPlush, MushyPirate, MushySkeleton). Every one is a **clone of `src/avatar.js`**
+with a custom look and one animated technique. You will do exactly the same thing.
+
+> Newer techniques worth knowing (templates): a **prop anchored to a hand landmark** —
+> `avatarKnight.js` (a shield that rides `this.points.get('leftWrist')`); an **animated screen
+> face** (redrawn `CanvasTexture` with scanlines) — `avatarTV.js`; **multiple follow-chains**
+> (tentacles) — `avatarOcto.js`; **asymmetric/replaced limb caps** (hook + peg) —
+> `avatarPirate.js`; an **anchored bobbing accessory** (halo) — `avatarAngel.js`.
 
 ---
 

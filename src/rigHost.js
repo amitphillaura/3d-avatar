@@ -20,6 +20,16 @@ import { MushyNimbus } from "./avatarNimbus.js";
 import { MushyPix } from "./avatarPix.js";
 import { MushyJack } from "./avatarJack.js";
 import { MushyStar } from "./avatarStar.js";
+import { MushyKnight } from "./avatarKnight.js";
+import { MushyMushroom } from "./avatarMushroom.js";
+import { MushyOcto } from "./avatarOcto.js";
+import { MushyBee } from "./avatarBee.js";
+import { MushyMagma } from "./avatarMagma.js";
+import { MushyTV } from "./avatarTV.js";
+import { MushyAngel } from "./avatarAngel.js";
+import { MushyPlush } from "./avatarPlush.js";
+import { MushyPirate } from "./avatarPirate.js";
+import { MushySkeleton } from "./avatarSkeleton.js";
 
 // Selectable rig variants. Each clones the same public API (updateTracking, dispose,
 // setShowJointLabels, …) so RigHost can swap one for another without any other changes.
@@ -45,7 +55,17 @@ export const RIG_VARIANTS = {
   mushyNimbus: { label: "MushyNimbus", AvatarClass: MushyNimbus },
   mushyPix: { label: "MushyPix", AvatarClass: MushyPix },
   mushyJack: { label: "MushyJack", AvatarClass: MushyJack },
-  mushyStar: { label: "MushyStar", AvatarClass: MushyStar }
+  mushyStar: { label: "MushyStar", AvatarClass: MushyStar },
+  mushyKnight: { label: "MushyKnight", AvatarClass: MushyKnight },
+  mushyMushroom: { label: "MushyMushroom", AvatarClass: MushyMushroom },
+  mushyOcto: { label: "MushyOcto", AvatarClass: MushyOcto },
+  mushyBee: { label: "MushyBee", AvatarClass: MushyBee },
+  mushyMagma: { label: "MushyMagma", AvatarClass: MushyMagma },
+  mushyTV: { label: "MushyTV", AvatarClass: MushyTV },
+  mushyAngel: { label: "MushyAngel", AvatarClass: MushyAngel },
+  mushyPlush: { label: "MushyPlush", AvatarClass: MushyPlush },
+  mushyPirate: { label: "MushyPirate", AvatarClass: MushyPirate },
+  mushySkeleton: { label: "MushySkeleton", AvatarClass: MushySkeleton }
 };
 
 export const DEFAULT_RIG_VARIANT = "mushy";
