@@ -31,7 +31,11 @@ use the media file picker with a video or image.
 
 - `src/app.js` — MediaPipe pipeline, 2D skeleton panes, video frame scrubber, layout sync, JSON export.
 - `src/avatar.js` — `MushyAvatar`, `OneEuro` filter, hero letterbox viewport, joint labels.
-- `src/rigHost.js` — mounts hero Mushy viewer and forwards tracking.
+- `src/avatar<Name>.js` — character **variants** (clones of `avatar.js`): Kid, Prime, Ghost, Astro,
+  Dragon, Neon, Slime, Shade, Bloom, Wurm, Cog, Voxel, Gem, Trail, Fuzz, Aqua, Ember, Nimbus,
+  Pix, Jack, Star. Selectable via the rig dropdown. **To add more, follow
+  [`RIG_VARIANTS_PLAYBOOK.md`](RIG_VARIANTS_PLAYBOOK.md) — a complete step-by-step recipe.**
+- `src/rigHost.js` — mounts hero Mushy viewer and forwards tracking; holds the `RIG_VARIANTS` registry.
 - `src/poseSkeleton.js` — shared `mapPoseLandmark`, framing constants.
 - `src/skeletonGraph.js` — pose connections, feet, neck bridge for 2D panes.
 - `src/jointLabels.js` — shared joint label text + facing helpers.
