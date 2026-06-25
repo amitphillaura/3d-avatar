@@ -1032,18 +1032,54 @@ export class MushyKnight {
     this.zoom = Number.isFinite(v) ? Math.min(Math.max(v, 0.5), 2) : 1;
   }
 
-  // THE TECHNIQUE — ride the shield on the user's left forearm. The base updates
-  // `this.points.get("leftWrist")` to the live wrist world-position each frame; copy it so
-  // the shield follows the hand whenever the left wrist is tracked, and hide it otherwise.
+  // THE TECHNIQUE — ride the shield on the user's left forearm. Anchor to the wrist,
+  // orient the disc outward from the body using the elbow→wrist axis, and hide the
+  // overlapping left gauntlet cap while the shield is active.
   syncAttachedModel(delta) {
+    void delta;
     if (!this._shield) return;
     const w = this.points.get("leftWrist");
     const tracking = this.activePoints.has("leftWrist");
     this._shield.visible = tracking;
-    if (this._shield && w && tracking) {
-      this._shield.position.copy(w);
-      this._shield.position.z += 0.1;
+    if (this.caps?.leftWrist && tracking && !this.showJointLabels) {
+      this.caps.leftWrist.visible = false;
     }
+    if (!tracking || !w) return;
+
+    const e = this.points.get("leftElbow");
+    if (this.activePoints.has("leftElbow") && e) {
+      const forearm = this._mapScratch.subVectors(w, e);
+      const forearmLen = forearm.length();
+      if (forearmLen > 0.02) {
+        forearm.multiplyScalar(1 / forearmLen);
+        this._shield.position.copy(w).addScaledVector(forearm, -0.14);
+
+        let outward = this._toJoint.crossVectors(forearm, this._toCamera.set(0, 1, 0));
+        if (outward.lengthSq() < 1e-6) {
+          if (this.writeTorsoMid(this._torsoMid)) {
+            outward.copy(w).sub(this._torsoMid);
+            outward.y = 0;
+          } else {
+            outward.set(-1, 0, 0);
+          }
+        }
+        if (outward.lengthSq() > 1e-6) {
+          outward.normalize();
+          if (this.writeTorsoMid(this._torsoMid)) {
+            this._handAssignA.subVectors(w, this._torsoMid);
+            this._handAssignA.y = 0;
+            if (this._handAssignA.lengthSq() > 1e-6 && outward.dot(this._handAssignA) < 0) {
+              outward.negate();
+            }
+          }
+          this._shield.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), outward);
+          return;
+        }
+      }
+    }
+
+    this._shield.position.copy(w);
+    this._shield.position.z += 0.1;
   }
 
   setPaused(paused) {

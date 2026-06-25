@@ -1042,6 +1042,7 @@ export class MushyOcto {
     });
     if (this.neck) this.neck.visible = false;
     if (this.torso) this.torso.visible = false;
+    this.hideHandRigs();
     if (!this._tentacles) return;
 
     const t = (performance.now() - this.startedAt) / 1000;

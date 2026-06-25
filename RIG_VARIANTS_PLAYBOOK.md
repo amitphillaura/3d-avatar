@@ -298,16 +298,12 @@ tex.minFilter = THREE.NearestFilter;
 
 ---
 
-## 6. Register the variant (2 files, 3 lines)
+## 6. Register the variant (2 files, 2 lines)
 
 ### `src/rigHost.js`
-Add an import near the other avatar imports:
+Add one line to the `RIG_VARIANTS` object (variants lazy-load via dynamic `import()`):
 ```js
-import { MushyYourName } from "./avatarYourName.js";
-```
-Add a line to the `RIG_VARIANTS` object:
-```js
-  mushyYourName: { label: "MushyYourName", AvatarClass: MushyYourName },
+  mushyYourName: variantSpec("MushyYourName", () => import("./avatarYourName.js")),
 ```
 (The registry key is camelCase; the dropdown `<option value>` must match it exactly.)
 
@@ -319,12 +315,15 @@ Add an `<option>` inside `<select id="rigVariant">`:
 That's it — `RigHost.setVariant()`, zoom carry-over, the joints toggle, persistence, and the
 camera all work automatically for any registered variant.
 
+Run `npm run check:rig-registry` to confirm the registry, dropdown, and module path stay in sync.
+
 ---
 
 ## 7. Verify (don't skip)
 
 ```bash
 node --check src/avatarYourName.js     # syntax — must be silent
+npm run check:rig-registry             # registry ↔ dropdown ↔ module file
 npm run build                          # must succeed (catches import/type errors)
 ```
 Then in the browser (dev server `npm run dev`, or the running prod on http://127.0.0.1:5180):

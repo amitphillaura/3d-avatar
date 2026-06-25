@@ -2012,13 +2012,13 @@ function bindEvents() {
     rigHost?.setShowJointLabels?.(riggedJointLabelsToggle.checked);
   });
 
-  rigVariantSelect?.addEventListener("change", () => {
+  rigVariantSelect?.addEventListener("change", async () => {
     try {
       localStorage.setItem(RIG_VARIANT_KEY, rigVariantSelect.value);
     } catch {
       // ignore storage failures
     }
-    rigHost?.setVariant?.(rigVariantSelect.value);
+    await rigHost?.setVariant?.(rigVariantSelect.value);
     // The avatar instance was rebuilt — repoint the debug hook and re-feed the current
     // frame so a paused video/still shows the new rig immediately (camera streams anyway).
     window.__avatar = rigHost?.avatar ?? null;
@@ -2191,7 +2191,7 @@ async function initRigHost() {
     showJointLabels: riggedJointLabelsToggle?.checked ?? true,
     trackFingers: Boolean(trackFingersToggle?.checked)
   });
-  rigHost.init();
+  await rigHost.init();
   if (rigZoomInput) rigHost.setZoom(zoomLevelToFactor(rigZoomInput.value));
   window.__avatar = rigHost.avatar;
   window.__rigHost = rigHost;

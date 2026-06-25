@@ -1114,6 +1114,8 @@ export class MushyTV {
       this.labelRenderer = null;
     }
     this.jointLabels.clear();
+    this._tex?.dispose();
+    this._tex = null;
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode === this.mount) {
       this.mount.removeChild(this.renderer.domElement);

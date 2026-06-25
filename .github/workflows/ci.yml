@@ -17,5 +17,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run check:rig-registry
       - run: npm run build
       - run: npm audit --audit-level=low

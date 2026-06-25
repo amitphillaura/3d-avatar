@@ -16,6 +16,7 @@ npm run dev -- --port 5173          # development
 npm run start                       # manual: build + serve on :5180
 npm run autostart:install           # login autostart (macOS launchd)
 npm run build
+npm run check:rig-registry
 npm audit --audit-level=low
 ```
 
@@ -36,7 +37,8 @@ use the media file picker with a video or image.
   Nimbus, Pix, Jack, Star, Knight, Mushroom, Octo, Bee, Magma, TV, Angel, Plush, Pirate, Skeleton.
   Selectable via the rig dropdown (32 characters incl. Mushy). **To add more, follow
   [`RIG_VARIANTS_PLAYBOOK.md`](RIG_VARIANTS_PLAYBOOK.md) — a complete step-by-step recipe.**
-- `src/rigHost.js` — mounts hero Mushy viewer and forwards tracking; holds the `RIG_VARIANTS` registry.
+- `src/rigHost.js` — mounts hero Mushy viewer and forwards tracking; holds the `RIG_VARIANTS` registry (variants lazy-load via dynamic `import()`).
+- `scripts/check-rig-registry.mjs` — CI check that registry keys, rig dropdown, and module files stay in sync (`npm run check:rig-registry`).
 - `src/poseSkeleton.js` — shared `mapPoseLandmark`, framing constants.
 - `src/skeletonGraph.js` — pose connections, feet, neck bridge for 2D panes.
 - `src/jointLabels.js` — shared joint label text + facing helpers.
@@ -56,11 +58,13 @@ use the media file picker with a video or image.
   `resetDetection()` (source switch / stop).
 - Sidebar **Track Fingers** toggle (`trackFingers`) opts into per-finger driving on Mushy hands.
 - Hero 3D letterboxes to `--viz-aspect`; the 3 primary viewers fill their grid cells.
+- **Rig variants lazy-load** — only the selected character chunk is fetched (~46 KB main bundle + per-variant chunk on demand).
 - Dev hooks: `window.__avatar`, `window.__rigHost`, `window.__loadVideoURL`,
   `window.__playVideo`, `window.__processFrame`, `window.__video`, `window.__image`.
 
 ## Verification Checklist
 
+- `npm run check:rig-registry` passes.
 - `npm run build` passes.
 - `npm audit --audit-level=low` reports 0 vulnerabilities.
 - `npm run start` → http://127.0.0.1:5180/ loads and tracks.

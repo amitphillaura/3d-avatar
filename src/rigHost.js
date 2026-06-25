@@ -1,71 +1,47 @@
-import { MushyAvatar } from "./avatar.js";
-import { MushyKid } from "./avatarKid.js";
-import { MushyPrime } from "./avatarPrime.js";
-import { MushyGhost } from "./avatarGhost.js";
-import { MushyAstro } from "./avatarAstro.js";
-import { MushyDragon } from "./avatarDragon.js";
-import { MushyNeon } from "./avatarNeon.js";
-import { MushySlime } from "./avatarSlime.js";
-import { MushyShade } from "./avatarShade.js";
-import { MushyBloom } from "./avatarBloom.js";
-import { MushyWurm } from "./avatarWurm.js";
-import { MushyCog } from "./avatarCog.js";
-import { MushyVoxel } from "./avatarVoxel.js";
-import { MushyGem } from "./avatarGem.js";
-import { MushyTrail } from "./avatarTrail.js";
-import { MushyFuzz } from "./avatarFuzz.js";
-import { MushyAqua } from "./avatarAqua.js";
-import { MushyEmber } from "./avatarEmber.js";
-import { MushyNimbus } from "./avatarNimbus.js";
-import { MushyPix } from "./avatarPix.js";
-import { MushyJack } from "./avatarJack.js";
-import { MushyStar } from "./avatarStar.js";
-import { MushyKnight } from "./avatarKnight.js";
-import { MushyMushroom } from "./avatarMushroom.js";
-import { MushyOcto } from "./avatarOcto.js";
-import { MushyBee } from "./avatarBee.js";
-import { MushyMagma } from "./avatarMagma.js";
-import { MushyTV } from "./avatarTV.js";
-import { MushyAngel } from "./avatarAngel.js";
-import { MushyPlush } from "./avatarPlush.js";
-import { MushyPirate } from "./avatarPirate.js";
-import { MushySkeleton } from "./avatarSkeleton.js";
+function variantSpec(label, load, exportName) {
+  return {
+    label,
+    load,
+    exportName: exportName ?? label
+  };
+}
 
 // Selectable rig variants. Each clones the same public API (updateTracking, dispose,
 // setShowJointLabels, …) so RigHost can swap one for another without any other changes.
+// Variants load on demand via dynamic import() so the initial bundle stays small.
 export const RIG_VARIANTS = {
-  mushy: { label: "Mushy", AvatarClass: MushyAvatar },
-  mushyKid: { label: "MushyKid", AvatarClass: MushyKid },
-  mushyPrime: { label: "MushyPrime", AvatarClass: MushyPrime },
-  mushyGhost: { label: "MushyGhost", AvatarClass: MushyGhost },
-  mushyAstro: { label: "MushyAstro", AvatarClass: MushyAstro },
-  mushyDragon: { label: "MushyDragon", AvatarClass: MushyDragon },
-  mushyNeon: { label: "MushyNeon", AvatarClass: MushyNeon },
-  mushySlime: { label: "MushySlime", AvatarClass: MushySlime },
-  mushyShade: { label: "MushyShade", AvatarClass: MushyShade },
-  mushyBloom: { label: "MushyBloom", AvatarClass: MushyBloom },
-  mushyWurm: { label: "MushyWurm", AvatarClass: MushyWurm },
-  mushyCog: { label: "MushyCog", AvatarClass: MushyCog },
-  mushyVoxel: { label: "MushyVoxel", AvatarClass: MushyVoxel },
-  mushyGem: { label: "MushyGem", AvatarClass: MushyGem },
-  mushyTrail: { label: "MushyTrail", AvatarClass: MushyTrail },
-  mushyFuzz: { label: "MushyFuzz", AvatarClass: MushyFuzz },
-  mushyAqua: { label: "MushyAqua", AvatarClass: MushyAqua },
-  mushyEmber: { label: "MushyEmber", AvatarClass: MushyEmber },
-  mushyNimbus: { label: "MushyNimbus", AvatarClass: MushyNimbus },
-  mushyPix: { label: "MushyPix", AvatarClass: MushyPix },
-  mushyJack: { label: "MushyJack", AvatarClass: MushyJack },
-  mushyStar: { label: "MushyStar", AvatarClass: MushyStar },
-  mushyKnight: { label: "MushyKnight", AvatarClass: MushyKnight },
-  mushyMushroom: { label: "MushyMushroom", AvatarClass: MushyMushroom },
-  mushyOcto: { label: "MushyOcto", AvatarClass: MushyOcto },
-  mushyBee: { label: "MushyBee", AvatarClass: MushyBee },
-  mushyMagma: { label: "MushyMagma", AvatarClass: MushyMagma },
-  mushyTV: { label: "MushyTV", AvatarClass: MushyTV },
-  mushyAngel: { label: "MushyAngel", AvatarClass: MushyAngel },
-  mushyPlush: { label: "MushyPlush", AvatarClass: MushyPlush },
-  mushyPirate: { label: "MushyPirate", AvatarClass: MushyPirate },
-  mushySkeleton: { label: "MushySkeleton", AvatarClass: MushySkeleton }
+  mushy: variantSpec("Mushy", () => import("./avatar.js"), "MushyAvatar"),
+  mushyKid: variantSpec("MushyKid", () => import("./avatarKid.js")),
+  mushyPrime: variantSpec("MushyPrime", () => import("./avatarPrime.js")),
+  mushyGhost: variantSpec("MushyGhost", () => import("./avatarGhost.js")),
+  mushyAstro: variantSpec("MushyAstro", () => import("./avatarAstro.js")),
+  mushyDragon: variantSpec("MushyDragon", () => import("./avatarDragon.js")),
+  mushyNeon: variantSpec("MushyNeon", () => import("./avatarNeon.js")),
+  mushySlime: variantSpec("MushySlime", () => import("./avatarSlime.js")),
+  mushyShade: variantSpec("MushyShade", () => import("./avatarShade.js")),
+  mushyBloom: variantSpec("MushyBloom", () => import("./avatarBloom.js")),
+  mushyWurm: variantSpec("MushyWurm", () => import("./avatarWurm.js")),
+  mushyCog: variantSpec("MushyCog", () => import("./avatarCog.js")),
+  mushyVoxel: variantSpec("MushyVoxel", () => import("./avatarVoxel.js")),
+  mushyGem: variantSpec("MushyGem", () => import("./avatarGem.js")),
+  mushyTrail: variantSpec("MushyTrail", () => import("./avatarTrail.js")),
+  mushyFuzz: variantSpec("MushyFuzz", () => import("./avatarFuzz.js")),
+  mushyAqua: variantSpec("MushyAqua", () => import("./avatarAqua.js")),
+  mushyEmber: variantSpec("MushyEmber", () => import("./avatarEmber.js")),
+  mushyNimbus: variantSpec("MushyNimbus", () => import("./avatarNimbus.js")),
+  mushyPix: variantSpec("MushyPix", () => import("./avatarPix.js")),
+  mushyJack: variantSpec("MushyJack", () => import("./avatarJack.js")),
+  mushyStar: variantSpec("MushyStar", () => import("./avatarStar.js")),
+  mushyKnight: variantSpec("MushyKnight", () => import("./avatarKnight.js")),
+  mushyMushroom: variantSpec("MushyMushroom", () => import("./avatarMushroom.js")),
+  mushyOcto: variantSpec("MushyOcto", () => import("./avatarOcto.js")),
+  mushyBee: variantSpec("MushyBee", () => import("./avatarBee.js")),
+  mushyMagma: variantSpec("MushyMagma", () => import("./avatarMagma.js")),
+  mushyTV: variantSpec("MushyTV", () => import("./avatarTV.js")),
+  mushyAngel: variantSpec("MushyAngel", () => import("./avatarAngel.js")),
+  mushyPlush: variantSpec("MushyPlush", () => import("./avatarPlush.js")),
+  mushyPirate: variantSpec("MushyPirate", () => import("./avatarPirate.js")),
+  mushySkeleton: variantSpec("MushySkeleton", () => import("./avatarSkeleton.js"))
 };
 
 export const DEFAULT_RIG_VARIANT = "mushy";
@@ -82,18 +58,24 @@ export class RigHost {
     this.variant = RIG_VARIANTS[variant] ? variant : DEFAULT_RIG_VARIANT;
   }
 
-  init() {
-    this.avatar = this.createAvatar();
+  async init() {
+    this.avatar = await this.createAvatar();
     return this.avatar;
   }
 
-  createAvatar() {
-    const { AvatarClass } = RIG_VARIANTS[this.variant];
+  async createAvatar() {
+    const spec = RIG_VARIANTS[this.variant];
+    const mod = await spec.load();
+    const AvatarClass = mod[spec.exportName];
+    if (!AvatarClass) {
+      throw new Error(`Rig variant "${this.variant}" is missing export "${spec.exportName}".`);
+    }
     const avatar = new AvatarClass(this.mount, this.metaElement, {
       framedViewport: true,
       showJointLabels: this.showJointLabels
     });
     avatar.setZoom?.(this.zoom); // carry the current zoom across variant rebuilds
+    avatar.setTrackFingers?.(this.trackFingers);
     return avatar;
   }
 
@@ -105,12 +87,18 @@ export class RigHost {
   // Tear down the current avatar and rebuild with the chosen variant on the same mount,
   // carrying over the joint-label state. Returns the new avatar (or the current one if the
   // variant is unknown / unchanged) so callers can refresh window.__avatar.
-  setVariant(variant) {
+  async setVariant(variant) {
     if (!RIG_VARIANTS[variant] || variant === this.variant) return this.avatar;
+    const loading = variant;
     this.variant = variant;
     this.avatar?.dispose?.();
-    this.avatar = this.createAvatar();
-    this.avatar.setTrackFingers?.(this.trackFingers);
+    this.avatar = null;
+    const avatar = await this.createAvatar();
+    if (this.variant !== loading) {
+      avatar?.dispose?.();
+      return this.avatar;
+    }
+    this.avatar = avatar;
     return this.avatar;
   }
 
