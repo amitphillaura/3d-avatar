@@ -24,6 +24,7 @@
         <span class="home-wordmark">3D Avatar Studio</span>
         <h1 class="home-title">Build Smarter Avatars</h1>
         <p class="home-tagline">Capture motion, detect objects, and rig characters — all in one place.</p>
+        <p class="home-hint">New here? Start with <strong>Motion Capture</strong>: load media &rarr; track &rarr; pick a rig &rarr; export.</p>
       </section>
 
       <div class="home-tools">
@@ -88,6 +89,13 @@
             <span class="sidebar-icon" aria-hidden="true">🕺</span>
             <h1>Live Pose Tester</h1>
           </header>
+
+          <div class="quick-start" aria-label="Recommended workflow">
+            <strong>Quick start</strong>
+            <span>1 Load media</span>
+            <span>2 Track motion</span>
+            <span>3 Pick a rig / export</span>
+          </div>
 
           <div class="sidebar-section">
             <label class="field">
@@ -590,15 +598,16 @@
 
       <nav class="detection-tabs" role="tablist" aria-label="Detection modes">
         <button class="detection-tab detection-tab--active" role="tab" aria-selected="true"
-          data-tab="live" id="tab-live" aria-controls="panel-live">Live</button>
+          data-tab="live" id="tab-live" aria-controls="panel-live">Live camera</button>
         <button class="detection-tab" role="tab" aria-selected="false"
-          data-tab="video" id="tab-video" aria-controls="panel-video">Video</button>
+          data-tab="video" id="tab-video" aria-controls="panel-video">Video file</button>
         <button class="detection-tab" role="tab" aria-selected="false"
-          data-tab="multi" id="tab-multi" aria-controls="panel-multi">Multi</button>
+          data-tab="multi" id="tab-multi" aria-controls="panel-multi">Multi-object</button>
       </nav>
 
       <!-- Live tab -->
       <div class="detection-panel" id="panel-live" role="tabpanel" aria-labelledby="tab-live">
+        <p class="detection-panel-note">Use your webcam to detect one object stream in real time.</p>
         <div class="detection-canvas-wrap" id="liveWrap">
           <video id="liveVideo" class="detection-video" autoplay muted playsinline
             aria-label="Webcam feed"></video>
@@ -618,6 +627,7 @@
 
       <!-- Video tab -->
       <div class="detection-panel" id="panel-video" role="tabpanel" aria-labelledby="tab-video" hidden>
+        <p class="detection-panel-note">Load a local clip and scrub/play it while detection overlays draw on top.</p>
         <div class="detection-canvas-wrap" id="videoWrap">
           <video id="detVideoEl" class="detection-video" controls
             aria-label="Video file feed"></video>
@@ -639,8 +649,8 @@
 
       <!-- Multi tab -->
       <div class="detection-panel" id="panel-multi" role="tabpanel" aria-labelledby="tab-multi" hidden>
-        <p class="detection-multi-note">
-          Multi-subject mode detects all objects simultaneously. Start the camera to begin.
+        <p class="detection-panel-note">
+          Multi-object mode keeps every detected object visible at once. Start the camera to begin.
         </p>
         <div class="detection-canvas-wrap" id="multiWrap">
           <video id="multiVideo" class="detection-video" autoplay muted playsinline
@@ -844,7 +854,7 @@
             <button id="vrm-snapshot-btn" class="vrm-btn" type="button">&#128247; Snapshot</button>
             <button id="vrm-tpose-btn"    class="vrm-btn" type="button">&#8635; T-Pose</button>
             <div style="flex:1"></div>
-            <button id="vrm-export-btn"   class="vrm-btn" type="button">&#128190; Export VRM</button>
+            <button id="vrm-export-btn"   class="vrm-btn" type="button" title="VRM export is not supported yet">&#128190; Export unavailable</button>
           </div>
 
         </div><!-- /vrm-viewport -->
@@ -856,7 +866,7 @@
     <!-- Export modal (hidden by default) -->
     <div id="vrm-export-modal" class="vrm-modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="vrm-modal-title">
       <div class="vrm-modal">
-        <div class="vrm-modal-title" id="vrm-modal-title">&#128190; Export VRM</div>
+        <div class="vrm-modal-title" id="vrm-modal-title">&#128190; Export unavailable</div>
         <div class="vrm-modal-body">
           VRM export is not yet supported in this version.<br><br>
           To save your model, keep the original <code>.vrm</code> file — expression values and pose changes are session-only and are not written back to disk.

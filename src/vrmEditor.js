@@ -560,9 +560,22 @@ function setupDragDrop(viewportEl) {
 
 function initCollapsibleSections() {
   document.querySelectorAll('.vrm-panel-section-header').forEach(header => {
-    header.addEventListener('click', () => {
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', 'true');
+
+    const toggle = () => {
       const section = header.closest('.vrm-panel-section');
-      if (section) section.classList.toggle('collapsed');
+      if (!section) return;
+      const collapsed = section.classList.toggle('collapsed');
+      header.setAttribute('aria-expanded', String(!collapsed));
+    };
+
+    header.addEventListener('click', toggle);
+    header.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      toggle();
     });
   });
 }
