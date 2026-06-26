@@ -12,6 +12,7 @@
     <script src="/mediapipe/drawing_utils/drawing_utils.js"></script>
     <script src="/mediapipe/holistic/holistic.js"></script>
     <link rel="stylesheet" href="/src/home.css" />
+    <link rel="stylesheet" href="/src/vrmEditor.css" />
   </head>
   <body>
 
@@ -44,13 +45,14 @@
           <span class="tool-card-arrow" aria-hidden="true">&#8594;</span>
         </button>
 
-        <button class="tool-card tool-card--vrm" type="button" disabled aria-disabled="true">
+        <button class="tool-card tool-card--vrm" id="card-vrm-editor" type="button">
           <div class="tool-card-icon">VE</div>
           <div class="tool-card-body">
             <span class="tool-card-title">VRM Editor</span>
-            <span class="tool-card-desc">Import and customize VRM character models with pose retargeting.</span>
-            <span class="tool-card-badge">Coming soon</span>
+            <span class="tool-card-desc">Import and customize VRM character models with expressions, spring physics, and live capture.</span>
+            <span class="tool-card-badge tool-card-badge--new">New</span>
           </div>
+          <span class="tool-card-arrow" aria-hidden="true">&#8594;</span>
         </button>
       </div>
     </div>
@@ -658,20 +660,248 @@
       </div>
     </div>
 
+    <!-- ═══════════════════════════════════════════
+         VIEW: VRM Editor
+    ═══════════════════════════════════════════ -->
+    <div id="view-vrm-editor" class="view vrm-editor-view" hidden>
+
+      <!-- Header -->
+      <header class="vrm-editor-header">
+        <button id="vrm-back-btn" class="vrm-back-btn" type="button" aria-label="Back to Home">
+          &#8592; Home
+        </button>
+        <span class="vrm-editor-title">VRM Editor</span>
+        <span id="vrm-filename" class="vrm-editor-filename">No file loaded</span>
+
+        <!-- Loading / error indicators -->
+        <span id="vrm-loading" class="vrm-capture-status" hidden>
+          <span class="vrm-capture-dot" style="background:var(--vrm-accent);animation:vrm-pulse 1s infinite"></span>
+          Loading…
+        </span>
+        <span id="vrm-error-msg" class="vrm-capture-status" style="color:var(--danger)" hidden></span>
+
+        <!-- Spacer -->
+        <div style="flex:1"></div>
+
+        <!-- Capture status in header -->
+        <span id="vrm-capture-status" class="vrm-capture-status">
+          <span class="vrm-capture-dot"></span>
+          <span>Capture off</span>
+        </span>
+      </header>
+
+      <!-- Body: panel + viewport -->
+      <div class="vrm-editor-body">
+
+        <!-- ── Left panel ──────────────────────────────────── -->
+        <aside class="vrm-editor-panel" aria-label="VRM Editor controls">
+
+          <!-- File Management -->
+          <div class="vrm-panel-section">
+            <div class="vrm-panel-section-header">
+              File Management
+              <span class="chevron">&#9660;</span>
+            </div>
+            <div class="vrm-panel-section-body">
+              <div id="vrm-file-drop-label" class="vrm-file-drop" role="button" tabindex="0"
+                   aria-label="Click or drop a VRM file here">
+                &#128449; Drop .vrm file here or click to browse
+              </div>
+              <input id="vrm-file-input" type="file" accept=".vrm,.glb" hidden aria-label="Select VRM file" />
+              <div class="vrm-btn-row">
+                <button id="vrm-load-default" class="vrm-btn vrm-btn--sm" type="button">Load Default VRM</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Model Info -->
+          <div class="vrm-panel-section">
+            <div class="vrm-panel-section-header">
+              Model Info
+              <span class="chevron">&#9660;</span>
+            </div>
+            <div class="vrm-panel-section-body">
+              <div id="vrm-meta-panel">
+                <div class="vrm-meta-item">
+                  <span class="vrm-meta-key">Status</span>
+                  <span class="vrm-meta-val" style="color:var(--soft)">No model loaded</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Expression Editor -->
+          <div class="vrm-panel-section">
+            <div class="vrm-panel-section-header">
+              Expression Editor
+              <span class="chevron">&#9660;</span>
+            </div>
+            <div class="vrm-panel-section-body">
+              <div id="vrm-expr-container">
+                <p style="font-size:12px;color:var(--soft);margin:0">Load a VRM to see expressions.</p>
+              </div>
+              <div class="vrm-btn-row">
+                <button id="vrm-expr-reset" class="vrm-btn vrm-btn--sm" type="button">Reset All</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Spring Physics -->
+          <div class="vrm-panel-section">
+            <div class="vrm-panel-section-header">
+              Spring Physics
+              <span class="chevron">&#9660;</span>
+            </div>
+            <div class="vrm-panel-section-body">
+              <div class="vrm-toggle">
+                <span class="vrm-toggle-label">Enable Physics</span>
+                <label class="vrm-switch">
+                  <input id="vrm-spring-toggle" type="checkbox" checked />
+                  <span class="vrm-switch-track"></span>
+                </label>
+              </div>
+
+              <span class="vrm-slider-group-label">Wind Direction</span>
+
+              <div class="vrm-expr-row">
+                <label class="vrm-expr-label">X</label>
+                <div class="vrm-expr-slider-wrap">
+                  <input id="vrm-wind-x" class="vrm-expr-slider" type="range" min="-1" max="1" step="0.05" value="0" />
+                  <span class="vrm-expr-value">0.00</span>
+                </div>
+              </div>
+              <div class="vrm-expr-row">
+                <label class="vrm-expr-label">Y</label>
+                <div class="vrm-expr-slider-wrap">
+                  <input id="vrm-wind-y" class="vrm-expr-slider" type="range" min="-1" max="1" step="0.05" value="0" />
+                  <span class="vrm-expr-value">0.00</span>
+                </div>
+              </div>
+              <div class="vrm-expr-row">
+                <label class="vrm-expr-label">Z</label>
+                <div class="vrm-expr-slider-wrap">
+                  <input id="vrm-wind-z" class="vrm-expr-slider" type="range" min="-1" max="1" step="0.05" value="0" />
+                  <span class="vrm-expr-value">0.00</span>
+                </div>
+              </div>
+
+              <div class="vrm-btn-row">
+                <button id="vrm-shake-btn" class="vrm-btn vrm-btn--sm" type="button">&#10024; Shake</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Camera Settings -->
+          <div class="vrm-panel-section">
+            <div class="vrm-panel-section-header">
+              Camera
+              <span class="chevron">&#9660;</span>
+            </div>
+            <div class="vrm-panel-section-body">
+              <span class="vrm-slider-group-label">Presets</span>
+              <div class="vrm-cam-btns">
+                <button id="vrm-cam-front"   class="vrm-cam-btn active" type="button">Front</button>
+                <button id="vrm-cam-side"    class="vrm-cam-btn" type="button">Side</button>
+                <button id="vrm-cam-top"     class="vrm-cam-btn" type="button">Top</button>
+                <button id="vrm-cam-quarter" class="vrm-cam-btn" type="button">3/4</button>
+              </div>
+              <p style="font-size:11px;color:var(--soft);margin:10px 0 0;line-height:1.4">
+                Drag to orbit &bull; Scroll to zoom &bull; Right-drag to pan
+              </p>
+            </div>
+          </div>
+
+          <!-- Live Capture -->
+          <div class="vrm-panel-section">
+            <div class="vrm-panel-section-header">
+              Live Capture
+              <span class="chevron">&#9660;</span>
+            </div>
+            <div class="vrm-panel-section-body">
+              <p style="font-size:12px;color:var(--soft);margin:0 0 10px;line-height:1.45">
+                Animate the VRM in real time using your webcam and MediaPipe Holistic.
+              </p>
+              <button id="vrm-capture-btn" class="vrm-btn vrm-btn--accent" type="button">
+                &#127909; Start Live Capture
+              </button>
+            </div>
+          </div>
+
+        </aside><!-- /vrm-editor-panel -->
+
+        <!-- ── Viewport ────────────────────────────────────── -->
+        <div class="vrm-editor-viewport" id="vrm-viewport" role="region" aria-label="3D VRM preview">
+
+          <!-- Drop zone overlay (shown until a VRM is loaded) -->
+          <div id="vrm-drop-zone" class="vrm-drop-zone">
+            <div class="vrm-drop-zone-icon">&#129490;</div>
+            <div class="vrm-drop-zone-title">Drop a VRM file here</div>
+            <div class="vrm-drop-zone-sub">or use the File Management panel to load one</div>
+          </div>
+
+          <!-- Bottom toolbar -->
+          <div class="vrm-toolbar">
+            <button id="vrm-snapshot-btn" class="vrm-btn" type="button">&#128247; Snapshot</button>
+            <button id="vrm-tpose-btn"    class="vrm-btn" type="button">&#8635; T-Pose</button>
+            <div style="flex:1"></div>
+            <button id="vrm-export-btn"   class="vrm-btn" type="button">&#128190; Export VRM</button>
+          </div>
+
+        </div><!-- /vrm-viewport -->
+
+      </div><!-- /vrm-editor-body -->
+
+    </div><!-- /view-vrm-editor -->
+
+    <!-- Export modal (hidden by default) -->
+    <div id="vrm-export-modal" class="vrm-modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="vrm-modal-title">
+      <div class="vrm-modal">
+        <div class="vrm-modal-title" id="vrm-modal-title">&#128190; Export VRM</div>
+        <div class="vrm-modal-body">
+          VRM export is not yet supported in this version.<br><br>
+          To save your model, keep the original <code>.vrm</code> file — expression values and pose changes are session-only and are not written back to disk.
+        </div>
+        <div class="vrm-modal-footer">
+          <button id="vrm-modal-close" class="vrm-btn vrm-btn--accent" type="button">Got it</button>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      @keyframes vrm-pulse {
+        0%, 100% { opacity: 1; }
+        50%       { opacity: 0.3; }
+      }
+      .tool-card-badge--new {
+        background: linear-gradient(135deg, #a855f7, #7c3aed);
+        color: #fff;
+        font-weight: 700;
+        font-size: 10px;
+        padding: 2px 7px;
+        border-radius: 10px;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+      }
+    </style>
+
     <script type="module" src="/src/app.js"></script>
     <script type="module" src="/src/objectDetection.js"></script>
     <script type="module">
       import { initRouter, navigate } from '/src/router.js';
       import { initStudio } from '/src/studio.js';
+      import { initVrmEditor } from '/src/vrmEditor.js';
 
       initRouter();
       initStudio();
+      initVrmEditor();
 
       // Home card routing
       document.getElementById('card-motion-capture')
         ?.addEventListener('click', () => navigate('motion-capture'));
       document.getElementById('card-object-detection')
         ?.addEventListener('click', () => navigate('object-detection'));
+      document.getElementById('card-vrm-editor')
+        ?.addEventListener('click', () => navigate('vrm-editor'));
 
       // Back buttons
       document.getElementById('mc-back-btn')

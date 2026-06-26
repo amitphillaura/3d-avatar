@@ -1,0 +1,628 @@
+/* ============================================================
+   VRM Editor — full stylesheet
+   Design language: dark studio, purple accent (#a855f7)
+   ============================================================ */
+
+:root {
+  --vrm-accent: #a855f7;
+}
+
+/* ============================================================
+   Layout — outermost shell
+   ============================================================ */
+
+.vrm-editor-view {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--bg);
+  font-family: inherit;
+  color: var(--text);
+}
+
+/* ============================================================
+   Header
+   ============================================================ */
+
+.vrm-editor-header {
+  flex-shrink: 0;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+}
+
+.vrm-back-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: color 0.15s;
+  line-height: 1;
+}
+
+.vrm-back-btn:hover {
+  color: var(--text);
+}
+
+.vrm-editor-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--vrm-accent);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.vrm-editor-filename {
+  font-size: 11px;
+  color: var(--soft);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+/* ============================================================
+   Body — panel + viewport
+   ============================================================ */
+
+.vrm-editor-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* ============================================================
+   Left panel
+   ============================================================ */
+
+.vrm-editor-panel {
+  width: 280px;
+  min-width: 280px;
+  overflow-y: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Panel scrollbar */
+.vrm-editor-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.vrm-editor-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.vrm-editor-panel::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+/* ============================================================
+   Collapsible panel sections
+   ============================================================ */
+
+.vrm-panel-section {
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.vrm-panel-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: color 0.15s;
+}
+
+.vrm-panel-section-header:hover {
+  color: var(--text);
+}
+
+.vrm-panel-section-header .chevron {
+  font-size: 10px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.vrm-panel-section.collapsed .chevron {
+  transform: rotate(-90deg);
+}
+
+.vrm-panel-section.collapsed .vrm-panel-section-body {
+  display: none;
+}
+
+.vrm-panel-section-body {
+  padding: 8px 14px 14px;
+}
+
+/* ============================================================
+   Viewport
+   ============================================================ */
+
+.vrm-editor-viewport {
+  flex: 1;
+  position: relative;
+  background: #080b10;
+  overflow: hidden;
+}
+
+.vrm-editor-viewport canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ============================================================
+   Range inputs (scoped to .vrm-editor-view)
+   ============================================================ */
+
+.vrm-editor-view input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 2px;
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+}
+
+/* Webkit track */
+.vrm-editor-view input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--border);
+  border-radius: 1px;
+}
+
+/* Webkit thumb */
+.vrm-editor-view input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--vrm-accent);
+  margin-top: -6px;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.vrm-editor-view input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.22);
+}
+
+/* Mozilla track */
+.vrm-editor-view input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: var(--border);
+  border-radius: 1px;
+}
+
+/* Mozilla thumb */
+.vrm-editor-view input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--vrm-accent);
+  border: none;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.vrm-editor-view input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.22);
+}
+
+/* ============================================================
+   Expression / slider rows
+   ============================================================ */
+
+.vrm-expr-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.vrm-expr-label {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vrm-expr-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vrm-expr-slider {
+  width: 100%;
+}
+
+.vrm-expr-value {
+  font-size: 11px;
+  color: var(--soft);
+  min-width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vrm-slider-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--soft);
+  margin: 10px 0 6px;
+  display: block;
+}
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+
+.vrm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.vrm-btn:hover {
+  border-color: var(--vrm-accent);
+  color: var(--vrm-accent);
+}
+
+.vrm-btn--accent {
+  background: var(--vrm-accent);
+  color: #000;
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.vrm-btn--accent:hover {
+  background: #c084fc;
+  border-color: transparent;
+  color: #000;
+}
+
+.vrm-btn--danger {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: transparent;
+}
+
+.vrm-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.vrm-btn--sm {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.vrm-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* ============================================================
+   Toggle switch
+   ============================================================ */
+
+.vrm-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.vrm-toggle-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Hide the real checkbox */
+.vrm-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.vrm-switch input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.vrm-switch-track {
+  width: 34px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--border);
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.vrm-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--soft);
+  transition: transform 0.2s, background 0.2s;
+}
+
+.vrm-switch input[type="checkbox"]:checked ~ .vrm-switch-track {
+  background: var(--vrm-accent);
+}
+
+.vrm-switch input[type="checkbox"]:checked ~ .vrm-switch-track::after {
+  transform: translateX(16px);
+  background: #fff;
+}
+
+/* ============================================================
+   Viewport drop zone
+   ============================================================ */
+
+.vrm-drop-zone {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--muted);
+  pointer-events: none;
+  transition: background 0.2s, border 0.2s;
+}
+
+.vrm-drop-zone.drag-over {
+  background: rgba(168, 85, 247, 0.08);
+  border: 2px dashed var(--vrm-accent);
+  pointer-events: auto;
+}
+
+.vrm-drop-zone-icon {
+  font-size: 56px;
+  opacity: 0.3;
+  line-height: 1;
+}
+
+.vrm-drop-zone-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.vrm-drop-zone-sub {
+  font-size: 13px;
+  opacity: 0.5;
+}
+
+/* ============================================================
+   Bottom toolbar (absolute over viewport)
+   ============================================================ */
+
+.vrm-toolbar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(8, 11, 16, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  z-index: 5;
+}
+
+/* ============================================================
+   Camera buttons
+   ============================================================ */
+
+.vrm-cam-btns {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.vrm-cam-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.vrm-cam-btn:hover {
+  border-color: var(--vrm-accent);
+  color: var(--vrm-accent);
+}
+
+.vrm-cam-btn.active {
+  background: var(--vrm-accent);
+  color: #000;
+  border-color: transparent;
+  font-weight: 700;
+}
+
+/* ============================================================
+   Meta info
+   ============================================================ */
+
+.vrm-meta-item {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+}
+
+.vrm-meta-key {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--soft);
+}
+
+.vrm-meta-val {
+  font-size: 12px;
+  color: var(--text);
+  margin-top: 2px;
+  word-break: break-word;
+}
+
+/* ============================================================
+   Panel file-drop area
+   ============================================================ */
+
+.vrm-file-drop {
+  border: 1.5px dashed var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  text-align: center;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  transition: all 0.15s;
+  margin-bottom: 8px;
+}
+
+.vrm-file-drop:hover {
+  border-color: var(--vrm-accent);
+  color: var(--vrm-accent);
+}
+
+/* ============================================================
+   Capture / status indicator
+   ============================================================ */
+
+.vrm-capture-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.vrm-capture-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--soft);
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.vrm-capture-status.active .vrm-capture-dot {
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+
+/* ============================================================
+   Modal
+   ============================================================ */
+
+.vrm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.vrm-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  max-width: 380px;
+  width: 90%;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+.vrm-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.vrm-modal-body {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 20px;
+  line-height: 1.55;
+}
+
+.vrm-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
