@@ -104,6 +104,55 @@ export function invalidateVideoDerivatives(db, videoId) {
   `).run(videoId);
 }
 
+function parseJsonLine(line, context) {
+  try {
+    return JSON.parse(line);
+  } catch (error) {
+    throw new Error(`${context}: invalid JSONL (${error.message})`);
+  }
+}
+
+/** Remove landmark files and frame rows; optionally invalidate segment matrices. */
+export function discardProcessedLandmarks(db, videoId, { invalidateMatrices = false } = {}) {
+  for (const path of [processedLandmarksPath(videoId), rawLandmarksPath(videoId)]) {
+    if (existsSync(path)) unlinkSync(path);
+  }
+  db.prepare("DELETE FROM frames WHERE video_id = ?").run(videoId);
+  if (invalidateMatrices) invalidateVideoDerivatives(db, videoId);
+}
+
+/** Drop segments whose frame range no longer fits the processed clip. */
+export function pruneOutOfRangeSegments(db, videoId, frameCount) {
+  if (!frameCount) return;
+  const maxIndex = frameCount - 1;
+  const stale = db.prepare(`
+    SELECT id FROM segments
+    WHERE video_id = ? AND (start_frame > ? OR end_frame > ?)
+  `).all(videoId, maxIndex, maxIndex);
+  for (const segment of stale) {
+    const path = matrixPath(videoId, segment.id);
+    if (existsSync(path)) unlinkSync(path);
+  }
+  db.prepare(`
+    DELETE FROM segments
+    WHERE video_id = ? AND (start_frame > ? OR end_frame > ?)
+  `).run(videoId, maxIndex, maxIndex);
+}
+
+export function recoverStaleProcessing(db) {
+  const stuck = db.prepare("SELECT id FROM videos WHERE status = 'processing'").all();
+  if (!stuck.length) return;
+  for (const row of stuck) {
+    discardProcessedLandmarks(db, row.id, { invalidateMatrices: true });
+  }
+  db.prepare(`
+    UPDATE videos
+    SET status = 'uploaded', error_message = 'Processing interrupted (server restart)'
+    WHERE status = 'processing'
+  `).run();
+  console.log(`Recovered ${stuck.length} video(s) stuck in processing`);
+}
+
 async function runPythonProcessor(videoPath, outputPath, fps = TARGET_FPS) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(PYTHON_BIN, [PROCESS_SCRIPT, "--video", videoPath, "--output", outputPath, "--fps", String(fps)], {
@@ -152,6 +201,7 @@ export async function processVideoJob({
   const processedPath = processedLandmarksPath(videoId);
 
   invalidateVideoDerivatives(db, videoId);
+  discardProcessedLandmarks(db, videoId);
   db.prepare("UPDATE videos SET status = ?, error_message = NULL WHERE id = ?").run("processing", videoId);
 
   try {
@@ -189,7 +239,7 @@ export async function processVideoJob({
 
     for await (const line of rl) {
       if (!line.trim()) continue;
-      const raw = JSON.parse(line);
+      const raw = parseJsonLine(line, rawPath);
       const enriched = enrichRawFrame(raw, {
         rigVariant,
         width: width || meta.width || 1280,
@@ -204,6 +254,8 @@ export async function processVideoJob({
     }
     if (batch.length) tx(batch);
     processedStream.end();
+
+    pruneOutOfRangeSegments(db, videoId, frameCount);
 
     db.prepare(`
       UPDATE videos
@@ -233,6 +285,7 @@ export async function processVideoJob({
 
     return { frameCount, meta };
   } catch (error) {
+    discardProcessedLandmarks(db, videoId, { invalidateMatrices: true });
     db.prepare("UPDATE videos SET status = 'failed', error_message = ? WHERE id = ?").run(
       error.message,
       videoId
@@ -251,7 +304,7 @@ export async function readProcessedFrames(videoId, { from = 0, to = Infinity } =
 
   for await (const line of rl) {
     if (!line.trim()) continue;
-    const frame = JSON.parse(line);
+    const frame = parseJsonLine(line, path);
     if (frame.frame_index < from) continue;
     if (frame.frame_index > to) break;
     frames.push(frame);
@@ -287,7 +340,15 @@ export function readFrameByIndex(videoId, frameIndex) {
 
     rl.on("line", (line) => {
       if (!line.trim()) return;
-      const frame = JSON.parse(line);
+      let frame;
+      try {
+        frame = parseJsonLine(line, path);
+      } catch (error) {
+        resolved = true;
+        rl.close();
+        reject(error);
+        return;
+      }
       if (frame.frame_index === frameIndex) {
         resolved = true;
         rl.close();

@@ -1,4 +1,5 @@
 import { createReadStream, readFileSync, rmSync } from "node:fs";
+import { extname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { getDb } from "../db/index.js";
@@ -10,7 +11,6 @@ import {
 } from "../lib/paths.js";
 import {
   deleteVideoAssets,
-  invalidateVideoDerivatives,
   MAX_EXPORT_FRAMES,
   MAX_FRAME_RANGE,
   processVideoJob,
@@ -21,6 +21,7 @@ import {
   TARGET_FPS,
   newVideoId
 } from "../lib/processor.js";
+import { validateSegmentRange } from "../lib/segments.js";
 
 const processing = new Set();
 
@@ -41,7 +42,10 @@ function readJsonFile(path) {
 }
 
 function clampFrameRange(video, fromRaw, toRaw) {
-  const maxIndex = Math.max(0, (video.frame_count || 1) - 1);
+  const maxIndex = Math.max(0, (video.frame_count || 0) - 1);
+  if (video.frame_count === 0) {
+    return { error: "Video has no processed frames" };
+  }
   const from = Math.max(0, Math.min(maxIndex, Number(fromRaw ?? 0)));
   const to = Math.max(from, Math.min(maxIndex, Number(toRaw ?? maxIndex)));
   if (!Number.isFinite(from) || !Number.isFinite(to)) {
@@ -50,18 +54,23 @@ function clampFrameRange(video, fromRaw, toRaw) {
   if (to - from + 1 > MAX_FRAME_RANGE) {
     return { error: `Frame range too large (max ${MAX_FRAME_RANGE})` };
   }
-  return { from, to };
+  return { from, to, maxIndex };
 }
 
-export function recoverStaleProcessing(db) {
-  const stuck = db.prepare("SELECT id FROM videos WHERE status = 'processing'").all();
-  if (!stuck.length) return;
-  db.prepare(`
-    UPDATE videos
-    SET status = 'uploaded', error_message = 'Processing interrupted (server restart)'
-    WHERE status = 'processing'
-  `).run();
-  console.log(`Recovered ${stuck.length} video(s) stuck in processing`);
+function validateSegmentRangeForVideo(video, startFrame, endFrame) {
+  return validateSegmentRange(video.frame_count, startFrame, endFrame);
+}
+
+function sourceContentType(sourcePath) {
+  const ext = extname(sourcePath || "").toLowerCase();
+  const types = {
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".m4v": "video/x-mp4"
+  };
+  return types[ext] || "application/octet-stream";
 }
 
 export function registerVideoRoutes(app) {
@@ -204,7 +213,7 @@ export function registerVideoRoutes(app) {
     const db = getDb();
     const video = db.prepare("SELECT * FROM videos WHERE id = ?").get(request.params.id);
     if (!video) return reply.code(404).send({ error: "Video not found" });
-    reply.header("Content-Type", "video/mp4");
+    reply.header("Content-Type", sourceContentType(video.source_path));
     return reply.send(createReadStream(video.source_path));
   });
 }
@@ -212,7 +221,7 @@ export function registerVideoRoutes(app) {
 export function registerSegmentRoutes(app) {
   app.get("/api/segments", async (request) => {
     const db = getDb();
-    const q = String(request.query.q || "").trim().toLowerCase();
+    const q = String(request.query.q || "").trim();
     const rows = db.prepare(`
       SELECT s.*, v.filename, v.rig_variant
       FROM segments s
@@ -220,12 +229,26 @@ export function registerSegmentRoutes(app) {
       ORDER BY s.updated_at DESC
     `).all();
 
+    const tagStmt = db.prepare(`
+      SELECT tag_type, tag_value FROM video_tags WHERE video_id = ? ORDER BY id DESC
+    `);
+
     const segments = q
-      ? rows.filter((segment) =>
-          `${segment.word_prompt || ""} ${segment.label || ""} ${segment.motion_type || ""}`
-            .toLowerCase()
-            .includes(q)
-        )
+      ? rows
+          .map((segment) => {
+            const tags = tagStmt.all(segment.video_id);
+            const matrix =
+              segment.matrix_status === "ready"
+                ? readJsonFile(matrixPath(segment.video_id, segment.id))
+                : null;
+            return {
+              segment,
+              score: scoreSegmentSearch({ segment, tags, matrix, query: q })
+            };
+          })
+          .filter((entry) => entry.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .map((entry) => entry.segment)
       : rows;
 
     return { segments: segments.map(serializeSegment) };
@@ -240,9 +263,8 @@ export function registerSegmentRoutes(app) {
     const body = request.body || {};
     const startFrame = Number(body.start_frame);
     const endFrame = Number(body.end_frame);
-    if (!Number.isFinite(startFrame) || !Number.isFinite(endFrame) || endFrame < startFrame) {
-      return reply.code(400).send({ error: "Invalid frame range" });
-    }
+    const rangeError = validateSegmentRangeForVideo(video, startFrame, endFrame);
+    if (rangeError) return reply.code(400).send({ error: rangeError });
 
     const segmentId = randomUUID();
     const startMs = (startFrame / TARGET_FPS) * 1000;
@@ -309,10 +331,8 @@ export function registerSegmentRoutes(app) {
       return reply.code(409).send({ error: "Video not ready" });
     }
 
-    const span = segment.end_frame - segment.start_frame + 1;
-    if (span > MAX_EXPORT_FRAMES) {
-      return reply.code(400).send({ error: `Segment too large (max ${MAX_EXPORT_FRAMES} frames)` });
-    }
+    const rangeError = validateSegmentRangeForVideo(video, segment.start_frame, segment.end_frame);
+    if (rangeError) return reply.code(400).send({ error: rangeError });
 
     const frames = await readProcessedFrames(video.id, {
       from: segment.start_frame,
@@ -363,10 +383,11 @@ export function registerSegmentRoutes(app) {
     if (!segment) return reply.code(404).send({ error: "Segment not found" });
 
     const video = db.prepare("SELECT * FROM videos WHERE id = ?").get(segment.video_id);
-    const span = segment.end_frame - segment.start_frame + 1;
-    if (span > MAX_EXPORT_FRAMES) {
-      return reply.code(400).send({ error: `Segment too large (max ${MAX_EXPORT_FRAMES} frames)` });
-    }
+    if (!video) return reply.code(404).send({ error: "Video not found" });
+    if (video.status !== "ready") return reply.code(409).send({ error: "Video not processed yet" });
+
+    const rangeError = validateSegmentRangeForVideo(video, segment.start_frame, segment.end_frame);
+    if (rangeError) return reply.code(400).send({ error: rangeError });
 
     const frames = await readProcessedFrames(video.id, {
       from: segment.start_frame,

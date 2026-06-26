@@ -1,7 +1,8 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
-import { registerSegmentRoutes, registerVideoRoutes, recoverStaleProcessing } from "./routes/index.js";
+import { recoverStaleProcessing } from "./lib/processor.js";
+import { registerSegmentRoutes, registerVideoRoutes } from "./routes/index.js";
 import { ensureDataDirs } from "./lib/paths.js";
 import { getDb } from "./db/index.js";
 

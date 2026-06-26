@@ -8,6 +8,7 @@
     "build": "vite build",
     "check:rig-registry": "node scripts/check-rig-registry.mjs",
     "check:motion-api": "node scripts/smoke-motion-api.mjs",
+    "test:motion-lib": "node --test scripts/test-motion-lib.mjs",
     "backend": "node backend/server.js",
     "backend:setup": "bash scripts/setup-motion-backend.sh",
     "dev:full": "npm run backend & npm run dev",

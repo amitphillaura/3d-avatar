@@ -163,7 +163,10 @@ export function scoreMotionSemantics(matrix, query) {
   if (/\b(bow|bowing|curtsy|nod)\b/.test(q) && detectBow(timeline)) score += 2;
   if (/\b(jump|hopping|hop|leap)\b/.test(q) && detectJump(timeline)) score += 2;
   if (/\b(dance|dancing|groove|shuffle)\b/.test(q) && detectDance(timeline)) score += 2;
-  if (/\b(raise|lift|hand|arm|point)\b/.test(q) && detectArmRaise(timeline)) score += 1.5;
+  if (/\b(raise|lift)\s+(?:your\s+)?(?:(?:left|right|both)\s+)?(?:hand|arm)s?\b/.test(q) && detectArmRaise(timeline)) {
+    score += 1.5;
+  }
+  if (/\bpoint(?:ing)?\b/.test(q) && detectArmRaise(timeline)) score += 1;
   return score;
 }
 

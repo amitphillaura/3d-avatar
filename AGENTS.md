@@ -73,6 +73,7 @@ use the media file picker with a video or image.
 ## Verification Checklist
 
 - `npm run check:rig-registry` passes.
+- `npm run check:motion-api` and `npm run test:motion-lib` pass.
 - `npm run build` passes.
 - `npm audit --audit-level=low` reports 0 vulnerabilities.
 - `npm run start` → http://127.0.0.1:5180/ loads and tracks.

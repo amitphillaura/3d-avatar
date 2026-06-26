@@ -1482,7 +1482,7 @@ function getAnatomicalHands() {
 
 async function processCurrentFrame() {
   const frameSource = getFrameSource();
-  if (motionReplay?.active) return;
+  if (motionReplay?.playing) return;
   if (isProcessingFrame || !holistic || !frameSource) {
     return;
   }
@@ -1642,7 +1642,14 @@ function syncMotionReplayPanel(state = {}) {
 
 async function applyMotionReplayVariant(variant) {
   if (!variant || !rigVariantSelect) return;
-  if (![...rigVariantSelect.options].some((option) => option.value === variant)) return;
+  const known = [...rigVariantSelect.options].some((option) => option.value === variant);
+  if (!known) {
+    setStatus(
+      `Replay rig "${variant}" is not in the rig picker; keeping ${rigVariantSelect.value}.`,
+      "warning"
+    );
+    return;
+  }
   if (rigVariantSelect.value === variant) return;
   rigVariantSelect.value = variant;
   try {
@@ -2064,6 +2071,10 @@ function bindEvents() {
     const [file] = motionReplayFileInput.files || [];
     motionReplayFileInput.value = "";
     if (!file) return;
+    if (file.size > 64 * 1024 * 1024) {
+      setStatus("Motion JSON is too large (max 64 MB).", "danger");
+      return;
+    }
     try {
       const payload = JSON.parse(await file.text());
       await loadMotionReplayPayload(payload, { autoplay: true });

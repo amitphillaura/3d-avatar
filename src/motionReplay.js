@@ -1,3 +1,6 @@
+/** Max frames accepted for replay JSON import (matches backend export cap). */
+export const MAX_REPLAY_FRAMES = 500;
+
 /** Convert a Motion Library processed frame into Holistic-style results. */
 export function frameToHolisticResults(frame) {
   const raw = frame?.raw || {};
@@ -7,6 +10,26 @@ export function frameToHolisticResults(frame) {
     leftHandLandmarks: raw.left_hand || null,
     rightHandLandmarks: raw.right_hand || null
   };
+}
+
+export function validateMotionExport(payload) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Export must be a JSON object");
+  }
+  if (!Array.isArray(payload.frames)) {
+    throw new Error("Export missing frames array");
+  }
+  if (payload.frames.length === 0) {
+    throw new Error("Export has no frames");
+  }
+  if (payload.frames.length > MAX_REPLAY_FRAMES) {
+    throw new Error(`Export exceeds ${MAX_REPLAY_FRAMES} frames`);
+  }
+  const sample = payload.frames[0];
+  if (!sample?.raw || typeof sample.raw !== "object") {
+    throw new Error("Export frames must include raw landmarks");
+  }
+  return payload;
 }
 
 /** Drive segment playback on the hero rig (and optional 2D panes via callbacks). */
@@ -28,19 +51,20 @@ export class MotionReplay {
   }
 
   load(payload) {
+    const validated = validateMotionExport(payload);
     this.stop(false);
-    this.frames = payload?.frames || [];
-    this.fps = payload?.fps || 30;
+    this.frames = validated.frames;
+    this.fps = validated.fps || 30;
     this.metadata = {
-      segmentId: payload?.segment?.id || null,
+      segmentId: validated.segment?.id || null,
       label:
-        payload?.segment?.word_prompt ||
-        payload?.segment?.label ||
-        payload?.video?.filename ||
+        validated.segment?.word_prompt ||
+        validated.segment?.label ||
+        validated.video?.filename ||
         "Motion replay",
-      rigVariant: payload?.video?.rig_variant || "mushy",
-      width: payload?.video?.width || 1280,
-      height: payload?.video?.height || 720
+      rigVariant: validated.video?.rig_variant || "mushy",
+      width: validated.video?.width || 1280,
+      height: validated.video?.height || 720
     };
     this.index = 0;
     this._emitState();
@@ -99,28 +123,43 @@ export class MotionReplay {
     this.seek(this.index + delta);
   }
 
-  _scheduleTick() {
-    this._clearTimer();
-    const intervalMs = 1000 / Math.max(this.fps, 1);
-    this.timer = window.setInterval(() => {
-      if (this.index >= this.frames.length - 1) {
-        if (this.loop) {
-          this.index = 0;
-          this._emitFrame();
-          return;
-        }
-        this.pause();
+  _advanceFrame() {
+    if (this.index >= this.frames.length - 1) {
+      if (this.loop) {
+        this.index = 0;
+        this._emitFrame();
+        this._emitState();
         return;
       }
-      this.index += 1;
-      this._emitFrame();
-      this._emitState();
-    }, intervalMs);
+      this.pause();
+      return;
+    }
+    this.index += 1;
+    this._emitFrame();
+    this._emitState();
+  }
+
+  _scheduleTick() {
+    this._clearTimer();
+    const stepMs = 1000 / Math.max(this.fps, 1);
+    let lastAt = performance.now();
+
+    const tick = (now) => {
+      if (!this.playing) return;
+      if (now - lastAt >= stepMs) {
+        lastAt = now;
+        this._advanceFrame();
+        if (!this.playing) return;
+      }
+      this.timer = window.requestAnimationFrame(tick);
+    };
+
+    this.timer = window.requestAnimationFrame(tick);
   }
 
   _clearTimer() {
     if (this.timer) {
-      window.clearInterval(this.timer);
+      window.cancelAnimationFrame(this.timer);
       this.timer = null;
     }
   }

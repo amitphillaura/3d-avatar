@@ -17,4 +17,6 @@
 - User sample video (`public/sample.mp4`) is gitignored — not in repo.
 - MediaPipe assets live under `public/mediapipe/` (vendored, no CDN).
 - Motion backend models download to `backend/models/` on first process run.
-- Motion replay needs `npm run backend` or `npm run start:full` for `/?replay=<segment>` API loads.
+- Segment frame ranges validated against `frame_count`; stale segments pruned after reprocess.
+- Failed/interrupted processing discards partial `processed.jsonl` + frame rows.
+- `npm run test:motion-lib` — hand pairing, segment bounds, search, replay export validation.

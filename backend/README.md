@@ -81,4 +81,6 @@ Word search scores segment labels, tags, descriptions, and simple motion-shape h
 
 - Processing requires a visible human pose for useful matrices; test patterns may yield empty body tracks.
 - `pipeline_version` is stored on each video for reprocessing when mapping code changes.
+- Segment `start_frame`/`end_frame` must fit inside processed `frame_count` (max 500 frames per segment/export).
+- Failed or interrupted jobs discard partial landmark files; restart recovery clears stuck `processing` rows.
 - SQLite DB and `data/` are gitignored.
