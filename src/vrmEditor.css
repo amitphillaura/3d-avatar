@@ -597,6 +597,13 @@
   -webkit-backdrop-filter: blur(4px);
 }
 
+/* The `display: flex` above otherwise wins over the user-agent `[hidden]` rule
+   (equal specificity, later source order), so the export modal would show on
+   page load and block the whole UI. Re-assert hiding with higher specificity. */
+.vrm-modal-backdrop[hidden] {
+  display: none;
+}
+
 .vrm-modal {
   background: var(--surface);
   border: 1px solid var(--border);
