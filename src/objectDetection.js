@@ -88,6 +88,11 @@ function makeCameraMode({ videoId, canvasId, startBtnId, stopBtnId, confidenceId
   const confidenceOutput = document.getElementById(confidenceValueId);
   const statusEl = document.getElementById(statusId);
 
+  if (!videoEl || !canvas || !startBtn || !stopBtn || !confidenceSlider || !confidenceOutput || !statusEl) {
+    console.warn(`[objectDetection] Missing camera-mode elements for ${videoId}`);
+    return;
+  }
+
   let stream = null;
   let timer = null;
   let running = false;
@@ -162,6 +167,11 @@ function makeVideoMode() {
   const confidenceSlider = document.getElementById("videoConfidence");
   const confidenceOutput = document.getElementById("videoConfidenceValue");
   const statusEl = document.getElementById("videoStatus");
+
+  if (!videoEl || !canvas || !fileInput || !confidenceSlider || !confidenceOutput || !statusEl) {
+    console.warn("[objectDetection] Missing video-mode elements");
+    return;
+  }
 
   let timer = null;
   let active = false;
@@ -267,6 +277,11 @@ function initViewToggle() {
   const view = document.getElementById("view-object-detection");
   const launcher = document.getElementById("openObjectDetection");
   const backBtn = document.getElementById("detectionBack");
+
+  // The app now uses the main home router (`card-object-detection` and `od-back-btn`).
+  // These legacy floating-launcher IDs are absent in the current markup; do not throw
+  // during startup or it prevents the home card routing from being wired.
+  if (!view || !launcher || !backBtn) return;
 
   launcher.addEventListener("click", () => {
     view.hidden = false;
