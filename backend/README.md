@@ -71,6 +71,11 @@ data/
 3. Mark **start/end frames**, add a **word prompt** (e.g. `"wave hello with left hand"`).
 4. **Build matrix** — normalizes joint trajectories for search/blending.
 5. **Export JSON** — frame bundle compatible with rig replay experiments.
+6. **Play in Rig** — opens the pose tester at `/?replay=<segment_id>` for hero + skeleton playback.
+
+## Search
+
+Word search scores segment labels, tags, descriptions, and simple motion-shape heuristics from built matrices (wave, bow, jump, dance, arm raise).
 
 ## Notes
 

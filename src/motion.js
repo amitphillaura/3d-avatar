@@ -96,6 +96,7 @@ function renderSegments(segments) {
         </div>
         <div class="motion-item-actions">
           <button type="button" class="btn" data-segment-action="matrix" data-id="${escapeHtml(segment.id)}">Build matrix</button>
+          <a class="btn btn--ghost" href="/?replay=${escapeHtml(segment.id)}">Play in Rig</a>
           <button type="button" class="btn btn--ghost" data-segment-action="export" data-id="${escapeHtml(segment.id)}">Export JSON</button>
         </div>
       </div>`
@@ -285,8 +286,15 @@ document.getElementById("searchForm").addEventListener("submit", async (event) =
           .map(
             ({ segment, score }) => `
             <div class="motion-item">
-              <strong>${escapeHtml(segment.word_prompt || segment.label || "Untitled")}</strong>
-              <div class="motion-subtitle">${escapeHtml(segment.filename || segment.video_id)} · score ${score.toFixed(2)}</div>
+              <div class="motion-item-head">
+                <div>
+                  <strong>${escapeHtml(segment.word_prompt || segment.label || "Untitled")}</strong>
+                  <div class="motion-subtitle">${escapeHtml(segment.filename || segment.video_id)} · score ${score.toFixed(2)}</div>
+                </div>
+              </div>
+              <div class="motion-item-actions">
+                <a class="btn btn--ghost" href="/?replay=${escapeHtml(segment.id)}">Play in Rig</a>
+              </div>
             </div>`
           )
           .join("")

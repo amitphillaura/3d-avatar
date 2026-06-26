@@ -2,7 +2,7 @@ import { createReadStream, readFileSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { getDb } from "../db/index.js";
-import { buildMotionMatrix, scoreMotionQuery } from "../lib/matrix.js";
+import { buildMotionMatrix, scoreSegmentSearch } from "../lib/matrix.js";
 import {
   matrixPath,
   videoDir,
@@ -375,7 +375,13 @@ export function registerSegmentRoutes(app) {
 
     return {
       segment: serializeSegment(segment),
-      video: { id: video.id, filename: video.filename, rig_variant: video.rig_variant },
+      video: {
+        id: video.id,
+        filename: video.filename,
+        rig_variant: video.rig_variant,
+        width: video.width || null,
+        height: video.height || null
+      },
       fps: TARGET_FPS,
       frames
     };
@@ -392,18 +398,17 @@ export function registerSegmentRoutes(app) {
       ORDER BY s.updated_at DESC
     `).all();
 
+    const tagStmt = db.prepare(`
+      SELECT tag_type, tag_value FROM video_tags WHERE video_id = ? ORDER BY id DESC
+    `);
+
     const results = segments
       .map((segment) => {
         let score = 0;
         if (q) {
-          const hay = `${segment.word_prompt || ""} ${segment.label || ""} ${segment.motion_type || ""}`.toLowerCase();
-          score = q
-            .toLowerCase()
-            .split(/\s+/)
-            .filter(Boolean)
-            .reduce((acc, term) => acc + (hay.includes(term) ? 1 : 0), 0);
+          const tags = tagStmt.all(segment.video_id);
           const matrix = readJsonFile(matrixPath(segment.video_id, segment.id));
-          if (matrix) score += scoreMotionQuery(matrix, q) * 2;
+          score = scoreSegmentSearch({ segment, tags, matrix, query: q });
         }
         return { segment: serializeSegment(segment), score };
       })

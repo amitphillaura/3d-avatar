@@ -67,7 +67,8 @@ use the media file picker with a video or image.
 - Hero 3D letterboxes to `--viz-aspect`; the 3 primary viewers fill their grid cells.
 - **Rig variants lazy-load** — only the selected character chunk is fetched (~46 KB main bundle + per-variant chunk on demand).
 - Dev hooks: `window.__avatar`, `window.__rigHost`, `window.__loadVideoURL`,
-  `window.__playVideo`, `window.__processFrame`, `window.__video`, `window.__image`.
+  `window.__playVideo`, `window.__processFrame`, `window.__video`, `window.__image`,
+  `window.__motionReplay`, `window.__loadMotionSegment`.
 
 ## Verification Checklist
 

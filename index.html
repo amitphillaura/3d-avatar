@@ -82,6 +82,8 @@
           <div class="sidebar-section sidebar-section--actions">
             <a href="/motion.html" class="btn btn--link">Motion Library</a>
             <button id="sendToMotionLibrary" type="button" class="btn" disabled>Send to Motion Library</button>
+            <button id="loadMotionReplay" type="button" class="btn">Load Motion JSON</button>
+            <input id="motionReplayFile" type="file" accept="application/json,.json" hidden />
             <button id="downloadSnapshot" type="button" class="btn">Download Snapshot</button>
             <button id="copyKeypoints" type="button" class="btn" disabled>Copy JSON</button>
           </div>
@@ -268,7 +270,30 @@
                 <span class="tile-badge tile-badge--ready" id="riggedBadge">Ready</span>
               </header>
               <div class="tile-player tile-player--3d" id="riggedModelMount" aria-label="Rig viewer"></div>
-              <footer class="tile-footer">
+              <footer class="tile-footer tile-footer--rig">
+                <div id="motionReplayBar" class="motion-replay-bar" hidden>
+                  <div class="motion-replay-meta">
+                    <strong id="motionReplayLabel">Motion replay</strong>
+                    <span id="motionReplayProgress">0 / 0</span>
+                  </div>
+                  <div class="motion-replay-actions">
+                    <button id="motionReplayPlay" type="button" class="media-btn media-btn--accent">Play</button>
+                    <button id="motionReplayStop" type="button" class="media-btn">Stop</button>
+                    <label class="media-toggle">
+                      <input id="motionReplayLoop" type="checkbox" checked />
+                      <span>Loop</span>
+                    </label>
+                  </div>
+                  <input
+                    id="motionReplayScrub"
+                    class="motion-replay-scrub"
+                    type="range"
+                    min="0"
+                    max="0"
+                    value="0"
+                    aria-label="Motion replay frame"
+                  />
+                </div>
                 <div class="tile-zoom">
                   <span class="tile-zoom-label" id="rigZoomLabel">Zoom 100%</span>
                   <input

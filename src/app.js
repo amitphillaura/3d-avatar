@@ -1,5 +1,6 @@
 import "./styles.css";
 import { RigHost } from "./rigHost.js";
+import { MotionReplay, frameToHolisticResults } from "./motionReplay.js";
 import { captureVideoPoster, getProjectMedia } from "./mediaLibrary.js";
 import {
   facingFromMediaPipeZ,
@@ -153,6 +154,15 @@ const modelsLoadedIndicatorEl = document.getElementById("modelsLoadedIndicator")
 const modelsLoadedTextEl = document.getElementById("modelsLoadedText");
 const mediaLibraryEl = document.getElementById("mediaLibrary");
 const sendToMotionLibraryBtn = document.getElementById("sendToMotionLibrary");
+const loadMotionReplayBtn = document.getElementById("loadMotionReplay");
+const motionReplayFileInput = document.getElementById("motionReplayFile");
+const motionReplayBarEl = document.getElementById("motionReplayBar");
+const motionReplayLabelEl = document.getElementById("motionReplayLabel");
+const motionReplayProgressEl = document.getElementById("motionReplayProgress");
+const motionReplayPlayBtn = document.getElementById("motionReplayPlay");
+const motionReplayStopBtn = document.getElementById("motionReplayStop");
+const motionReplayLoopToggle = document.getElementById("motionReplayLoop");
+const motionReplayScrubEl = document.getElementById("motionReplayScrub");
 
 let latestResults = null;
 let cameraInstance = null;
@@ -160,6 +170,8 @@ let glowTrails = [];
 let frameTick = 0;
 let holistic = null;
 let rigHost = null;
+let motionReplay = null;
+let replayCanvas = null;
 let videoObjectUrl = null;
 let imageObjectUrl = null;
 let videoLoopId = null;
@@ -1470,6 +1482,7 @@ function getAnatomicalHands() {
 
 async function processCurrentFrame() {
   const frameSource = getFrameSource();
+  if (motionReplay?.active) return;
   if (isProcessingFrame || !holistic || !frameSource) {
     return;
   }
@@ -1519,6 +1532,7 @@ function setupModels() {
 }
 
 function resetDetection() {
+  motionReplay?.stop();
   latestResults = null;
   rigHost?.resetTracking?.();
   bodyTableEl.innerHTML = '<p class="kp-empty">Waiting for detection...</p>';
@@ -1581,6 +1595,111 @@ async function sendVideoToMotionLibrary() {
   } catch (error) {
     setStatus(`Motion Library upload failed: ${error.message}`, "danger");
   }
+}
+
+function ensureReplayCanvas(width, height) {
+  if (!replayCanvas) replayCanvas = document.createElement("canvas");
+  replayCanvas.width = width;
+  replayCanvas.height = height;
+  const ctx = replayCanvas.getContext("2d");
+  ctx.fillStyle = "#020306";
+  ctx.fillRect(0, 0, width, height);
+  return replayCanvas;
+}
+
+function applyMotionReplayFrame(frame, meta) {
+  latestResults = frameToHolisticResults(frame);
+  const canvas = ensureReplayCanvas(meta.width, meta.height);
+  if (meta.width > 0 && meta.height > 0) lastSourceAspect = meta.width / meta.height;
+  rigHost?.updateTracking(latestResults, {
+    width: meta.width,
+    height: meta.height
+  });
+  drawResults(canvas);
+  updateKeypointsPanel();
+  updateTrackingFooters(buildCurrentExportData());
+  copyButton.disabled = !hasDetectedData(buildCurrentExportData());
+  frameMetaEl.textContent = `Motion replay · ${meta.width} x ${meta.height}`;
+  setDetectionState("Motion replay");
+}
+
+function syncMotionReplayPanel(state = {}) {
+  if (!motionReplayBarEl) return;
+  const active = Boolean(state.active);
+  motionReplayBarEl.hidden = !active;
+  if (!active) return;
+
+  motionReplayLabelEl.textContent = state.label || "Motion replay";
+  motionReplayProgressEl.textContent = `${state.index + 1} / ${state.frameCount}`;
+  motionReplayPlayBtn.textContent = state.playing ? "Pause" : "Play";
+  motionReplayLoopToggle.checked = state.loop;
+  motionReplayScrubEl.max = String(Math.max(state.frameCount - 1, 0));
+  motionReplayScrubEl.value = String(state.index);
+  riggedModelMetaEl.textContent = state.playing
+    ? `Replaying · ${state.label}`
+    : `Replay loaded · ${state.label}`;
+}
+
+async function applyMotionReplayVariant(variant) {
+  if (!variant || !rigVariantSelect) return;
+  if (![...rigVariantSelect.options].some((option) => option.value === variant)) return;
+  if (rigVariantSelect.value === variant) return;
+  rigVariantSelect.value = variant;
+  try {
+    localStorage.setItem(RIG_VARIANT_KEY, variant);
+  } catch {
+    // ignore storage failures
+  }
+  await rigHost?.setVariant?.(variant);
+  window.__avatar = rigHost?.avatar ?? null;
+}
+
+async function loadMotionReplayPayload(payload, { autoplay = false } = {}) {
+  const meta = motionReplay.load(payload);
+  await applyMotionReplayVariant(meta.rigVariant);
+  syncMotionReplayPanel({
+    active: true,
+    playing: false,
+    loop: motionReplay.loop,
+    index: 0,
+    frameCount: motionReplay.frames.length,
+    label: meta.label
+  });
+  setStatus(`Loaded motion replay: ${meta.label}`, "success");
+  if (autoplay) motionReplay.play();
+}
+
+async function loadMotionReplaySegment(segmentId, options = {}) {
+  try {
+    setStatus("Loading motion segment…", "warning");
+    const meta = await motionReplay.loadSegment(segmentId);
+    await applyMotionReplayVariant(meta.rigVariant);
+    syncMotionReplayPanel({
+      active: true,
+      playing: false,
+      loop: motionReplay.loop,
+      index: 0,
+      frameCount: motionReplay.frames.length,
+      label: meta.label
+    });
+    setStatus(`Loaded motion replay: ${meta.label}`, "success");
+    if (options.autoplay) motionReplay.play();
+  } catch (error) {
+    setStatus(`Motion replay failed: ${error.message}`, "danger");
+  }
+}
+
+function initMotionReplay() {
+  motionReplay = new MotionReplay({
+    onFrame: (frame, meta) => {
+      applyMotionReplayFrame(frame, meta);
+    },
+    onStateChange: (state) => {
+      syncMotionReplayPanel(state);
+    }
+  });
+  window.__motionReplay = motionReplay;
+  window.__loadMotionSegment = loadMotionReplaySegment;
 }
 
 function clearImageObjectUrl() {
@@ -1937,6 +2056,37 @@ function bindEvents() {
   snapshotButton.addEventListener("click", downloadSnapshot);
   sendToMotionLibraryBtn?.addEventListener("click", () => {
     sendVideoToMotionLibrary();
+  });
+  loadMotionReplayBtn?.addEventListener("click", () => {
+    motionReplayFileInput?.click();
+  });
+  motionReplayFileInput?.addEventListener("change", async () => {
+    const [file] = motionReplayFileInput.files || [];
+    motionReplayFileInput.value = "";
+    if (!file) return;
+    try {
+      const payload = JSON.parse(await file.text());
+      await loadMotionReplayPayload(payload, { autoplay: true });
+    } catch (error) {
+      setStatus(`Motion JSON invalid: ${error.message}`, "danger");
+    }
+  });
+  motionReplayPlayBtn?.addEventListener("click", () => {
+    if (!motionReplay?.active) return;
+    if (motionReplay.playing) motionReplay.pause();
+    else motionReplay.play();
+  });
+  motionReplayStopBtn?.addEventListener("click", () => {
+    motionReplay?.stop();
+    resetDetection();
+    setStatus("Motion replay stopped.", "warning");
+  });
+  motionReplayLoopToggle?.addEventListener("change", () => {
+    if (!motionReplay) return;
+    motionReplay.loop = motionReplayLoopToggle.checked;
+  });
+  motionReplayScrubEl?.addEventListener("input", () => {
+    motionReplay?.seek(Number(motionReplayScrubEl.value));
   });
   restartCameraButton?.addEventListener("click", restartCamera);
   exportPoseBtn?.addEventListener("click", copyKeypointsJSON);
@@ -2436,6 +2586,7 @@ async function bootApp() {
   let rigReady = false;
   try {
     await initRigHost();
+    initMotionReplay();
     rigReady = true;
   } catch (error) {
     console.error(error);
@@ -2447,6 +2598,11 @@ async function bootApp() {
   syncSourceUI();
   refreshRawPanel();
   syncVizPlayerLayout();
+
+  const replaySegmentId = new URLSearchParams(window.location.search).get("replay");
+  if (replaySegmentId) {
+    await loadMotionReplaySegment(replaySegmentId, { autoplay: true });
+  }
   setModelsLoaded(rigReady);
   if (rigReady) {
     setStatus("Ready. Click Start Camera or load an image/video file to begin.", "success");

@@ -960,6 +960,45 @@ a.btn {
   white-space: nowrap;
 }
 
+.motion-replay-bar {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(41, 48, 61, 0.55);
+}
+
+.motion-replay-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.motion-replay-meta strong,
+.motion-replay-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.motion-replay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.motion-replay-scrub {
+  width: 100%;
+}
+
+.tile-footer--rig .tile-zoom {
+  width: 100%;
+}
+
 /* Match the Full Skeleton + Rig footers to the Raw tile's (taller) always-on-controls
    footer so all three primary-row players line up. JS measures the Raw footer and writes
    --tile-footer-h; the single meta line is centered in the taller box. */
