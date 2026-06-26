@@ -41,7 +41,8 @@ export const RIG_VARIANTS = {
   mushyAngel: variantSpec("MushyAngel", () => import("./avatarAngel.js")),
   mushyPlush: variantSpec("MushyPlush", () => import("./avatarPlush.js")),
   mushyPirate: variantSpec("MushyPirate", () => import("./avatarPirate.js")),
-  mushySkeleton: variantSpec("MushySkeleton", () => import("./avatarSkeleton.js"))
+  mushySkeleton: variantSpec("MushySkeleton", () => import("./avatarSkeleton.js")),
+  vrmDefault: variantSpec("VRM Avatar", () => import("./avatarVrm.js"), "VrmAvatar")
 };
 
 export const DEFAULT_RIG_VARIANT = "mushy";
