@@ -17,6 +17,8 @@ import {
 import { assignAnatomicalHands } from "./handAssignment.js";
 
 let currentVideoFile = null;
+
+const videoElement = document.createElement("video");
 videoElement.setAttribute("playsinline", "");
 videoElement.preload = "metadata";
 
