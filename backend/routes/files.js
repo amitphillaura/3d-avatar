@@ -28,7 +28,8 @@ function ensureProgressColumn(db) {
 
 function validatePath(reqPath) {
   const target = reqPath ? resolve(reqPath) : ALLOWED_ROOT;
-  if (!target.startsWith(ALLOWED_ROOT)) {
+  // Add sep to prevent /Downloads2 from matching /Downloads
+  if (target !== ALLOWED_ROOT && !target.startsWith(ALLOWED_ROOT + "/")) {
     return { error: "Path is outside allowed root", target: null };
   }
   return { error: null, target };

@@ -76,27 +76,6 @@ function sourceContentType(sourcePath) {
 export function registerVideoRoutes(app) {
   app.get("/api/health", async () => ({ ok: true, service: "motion-library" }));
 
-  app.get("/api/queue", async () => {
-    const db = getDb();
-    // Return all videos that are not in a terminal-done state, plus recently-ready ones
-    const rows = db.prepare(`
-      SELECT id, filename, status, created_at, updated_at
-      FROM videos
-      WHERE status IN ('uploaded', 'processing', 'failed', 'ready')
-      ORDER BY created_at DESC
-      LIMIT 50
-    `).all();
-    const jobs = rows.map(v => ({
-      id: v.id,
-      filename: v.filename,
-      status: v.status,
-      progress: v.status === "processing" ? null : v.status === "ready" ? 100 : null,
-      createdAt: v.created_at,
-      updatedAt: v.updated_at
-    }));
-    return { jobs };
-  });
-
   app.get("/api/videos", async () => {
     const db = getDb();
     const rows = db.prepare("SELECT * FROM videos ORDER BY created_at DESC").all();

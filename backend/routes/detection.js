@@ -1,7 +1,7 @@
 import { mkdirSync, existsSync, unlinkSync, readdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { getDb } from "../db/index.js";
 import { videoDir } from "../lib/paths.js";
@@ -15,28 +15,28 @@ function ensureTmpDir() {
 }
 
 /**
- * Run detect.py synchronously and return parsed detections.
- * @param {string} imagePath
- * @param {number} confidence
+ * Run detect.py asynchronously and return parsed detections.
+ * Using async spawn (not spawnSync) to avoid blocking the event loop.
  */
 function runDetect(imagePath, confidence = 0.4) {
   const payload = JSON.stringify({ image_path: imagePath, confidence });
-  const result = spawnSync("python3", [DETECT_PY], {
-    input: payload,
-    encoding: "utf8",
-    timeout: 30000
+  return new Promise((resolve, reject) => {
+    const child = spawn("python3", [DETECT_PY], { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => { child.kill(); reject(new Error("detect.py timed out")); }, 30000);
+    child.stdout.on("data", (c) => { stdout += c; });
+    child.stderr.on("data", (c) => { stderr += c; });
+    child.on("error", (err) => { clearTimeout(timer); reject(new Error(`detect.py spawn error: ${err.message}`)); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) { reject(new Error(`detect.py exited ${code}: ${stderr.trim()}`)); return; }
+      try { resolve(JSON.parse(stdout.trim())); }
+      catch { reject(new Error(`detect.py bad output: ${stdout}`)); }
+    });
+    child.stdin.write(payload);
+    child.stdin.end();
   });
-  if (result.error) {
-    throw new Error(`detect.py spawn error: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    throw new Error(`detect.py exited ${result.status}: ${result.stderr}`);
-  }
-  try {
-    return JSON.parse(result.stdout.trim());
-  } catch {
-    throw new Error(`detect.py bad output: ${result.stdout}`);
-  }
 }
 
 /**
