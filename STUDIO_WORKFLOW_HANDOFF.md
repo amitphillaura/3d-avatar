@@ -20,11 +20,32 @@ library. The Bowtie chat consumer is downstream and not built here.
 
 ---
 
-## 2. The Shape: One App, Two Tabs, One Queue
+## 2. The Shape: Home Hub → Tools
+
+The app opens on a **Home splash** (a polished landing page) that routes into
+each tool. This replaces "the app is a couple of disconnected pages" with one
+front door.
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  STUDIO SHELL                                                  │
+│  HOME  (splash / landing)                                     │
+│                                                               │
+│        ┌──────────────┐  ┌──────────────────┐                 │
+│        │ Motion       │  │ Object           │   …more later   │
+│        │ Capture  ▶   │  │ Detection   ▶    │  (VRM, Animals) │
+│        └──────────────┘  └──────────────────┘                 │
+└───────────────────────────────────────────────────────────────┘
+        │                          │
+        ▼                          ▼
+   MOTION CAPTURE tool        OBJECT DETECTION tool
+   (this document)            (OBJECT_DETECTION_HANDOFF.md)
+```
+
+### Motion Capture tool — Two Tabs + One Queue
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│  MOTION CAPTURE        [‹ Home]                               │
 │  ┌─────────────┬──────────────┐        ┌────────────────────┐ │
 │  │  ① INTAKE   │  ② MEDIA LAB │        │   QUEUE SIDEBAR    │ │
 │  │  (new)      │  (saved DB)  │        │  (always visible)  │ │
@@ -36,6 +57,9 @@ library. The Bowtie chat consumer is downstream and not built here.
 │                                         └────────────────────┘ │
 └───────────────────────────────────────────────────────────────┘
 ```
+
+Every tool has a **‹ Home** affordance to get back to the hub. The queue sidebar
+belongs to the Motion Capture tool (and any tool that enqueues jobs).
 
 ### Tab ① — Intake (new footage only)
 - Pick a video from disk (defaults to **Downloads**, navigable/configurable)
@@ -110,12 +134,19 @@ Most plumbing exists — the work is **coherence + three new capabilities**.
 
 Ship each phase working before the next. Each is independently testable.
 
-### Phase 0 — Unify the shell (no new backend)
-Merge the two HTML entry points into **one app shell** with tab navigation
-(`① Intake` / `② Media Lab`) and a placeholder queue sidebar. Intake tab hosts
-the existing live video→character view; Media Lab tab hosts the existing motion
-library UI. **Goal:** one page, two working tabs, nothing lost. Pure
-restructure.
+### Phase 0 — Home hub + unify the shell (no new backend)
+- Build the **Home splash**: a polished landing page with cards/buttons routing
+  into each tool (Motion Capture, Object Detection; more later). This is the new
+  app entry point — make it look good, it's the front door.
+- Add lightweight **client-side routing** (Home ↔ tool screens) with a `‹ Home`
+  affordance in each tool.
+- Fold the two existing HTML entry points into the **Motion Capture tool** as
+  tabs (`① Intake` / `② Media Lab`) with a placeholder queue sidebar. Intake
+  hosts the existing live video→character view; Media Lab hosts the existing
+  motion library UI.
+- **Goal:** open the app → see the splash → click into Motion Capture → both
+  tabs work, nothing lost. (Object Detection card can route to a stub for now;
+  it's built in its own handoff.)
 
 ### Phase 1 — Backend file browser
 - New route `GET /api/files/browse?path=<dir>` → lists folders/video files under
