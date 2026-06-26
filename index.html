@@ -829,10 +829,15 @@
             </div>
             <div class="vrm-panel-section-body">
               <p style="font-size:12px;color:var(--soft);margin:0 0 10px;line-height:1.45">
-                Animate the VRM in real time using your webcam and MediaPipe Holistic.
+                Animate the VRM in real time with your webcam, or drive it from a video file —
+                both via MediaPipe Holistic. Best results: a clear, full-body subject.
               </p>
               <button id="vrm-capture-btn" class="vrm-btn vrm-btn--accent" type="button">
                 &#127909; Start Live Capture
+              </button>
+              <input id="vrm-capture-video-input" type="file" accept="video/*" hidden aria-label="Select a video to drive the avatar" />
+              <button id="vrm-capture-video-btn" class="vrm-btn vrm-btn--sm" type="button" style="margin-top:8px">
+                &#127902; Drive from video&hellip;
               </button>
             </div>
           </div>

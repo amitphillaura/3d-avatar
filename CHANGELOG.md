@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — Drive the VRM from a video
+
+### Added
+- **VRM Editor: "Drive from video…"** — animate the avatar from a video file, not
+  just the live webcam. Both sources now share one pipeline
+  (`<video>` → MediaPipe Holistic → Kalidokit → VRM bones); the video plays
+  off-screen and loops. Monocular capture, so face/arms/hands track well and
+  legs/depth are approximate. Bundled a default VRM (`public/vrm/default.vrm`) so
+  there's a model to drive out of the box.
+
 ## Unreleased — Site review fixes
 
 ### Fixed

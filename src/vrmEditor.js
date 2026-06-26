@@ -27,6 +27,7 @@ let captureActive = false;
 let holisticInstance = null;
 let cameraStream = null;
 let captureVideo = null;
+let captureObjectUrl = null;
 let currentFileName = '';
 let exprSliders = {};
 
@@ -397,24 +398,18 @@ function applyWind(x, y, z) {
 
 // ─── Live Capture (MediaPipe Holistic) ───────────────────────────────────────
 
-async function startLiveCapture() {
-  if (captureActive) return;
+function newCaptureVideo() {
+  const v = document.createElement('video');
+  v.autoplay = true;
+  v.playsInline = true;
+  v.muted = true;
+  return v;
+}
 
-  captureVideo = document.createElement('video');
-  captureVideo.autoplay = true;
-  captureVideo.playsInline = true;
-  captureVideo.muted = true;
-
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
-    captureVideo.srcObject = cameraStream;
-    await captureVideo.play();
-  } catch (e) {
-    showError('Camera access denied: ' + e.message);
-    captureVideo = null;
-    return;
-  }
-
+// Shared MediaPipe Holistic setup + per-frame send loop. The frame source is
+// whatever `captureVideo` is — a webcam stream or a playing video file — so the
+// same pipeline (Holistic → Kalidokit → VRM bones) drives both.
+async function beginCapture() {
   captureActive = true;
   updateCaptureStatusUI(true);
 
@@ -445,13 +440,56 @@ async function startLiveCapture() {
   sendFrame();
 }
 
+async function startLiveCapture() {
+  if (captureActive) return;
+  if (!vrm) { showError('Load a VRM model first.'); return; }
+
+  captureVideo = newCaptureVideo();
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    captureVideo.srcObject = cameraStream;
+    await captureVideo.play();
+  } catch (e) {
+    showError('Camera access denied: ' + e.message);
+    captureVideo = null;
+    return;
+  }
+  await beginCapture();
+}
+
+// Drive the avatar from a video file instead of the webcam. Loops so the
+// motion repeats; the source video plays off-screen (only the avatar is shown).
+async function startVideoCapture(file) {
+  if (!vrm) { showError('Load a VRM model first.'); return; }
+  if (captureActive) stopLiveCapture();
+
+  captureVideo = newCaptureVideo();
+  captureObjectUrl = URL.createObjectURL(file);
+  captureVideo.src = captureObjectUrl;
+  captureVideo.loop = true;
+  try {
+    await captureVideo.play();
+  } catch (e) {
+    showError('Could not play that video: ' + e.message);
+    cleanupCaptureVideo();
+    return;
+  }
+  await beginCapture();
+}
+
+function cleanupCaptureVideo() {
+  if (captureVideo) { try { captureVideo.pause(); } catch (_) { /* ignore */ } }
+  if (captureObjectUrl) { URL.revokeObjectURL(captureObjectUrl); captureObjectUrl = null; }
+  captureVideo = null;
+}
+
 function stopLiveCapture() {
   captureActive = false;
   if (cameraStream) {
     cameraStream.getTracks().forEach(t => t.stop());
     cameraStream = null;
   }
-  captureVideo = null;
+  cleanupCaptureVideo();
   updateCaptureStatusUI(false);
 }
 
@@ -740,6 +778,16 @@ export function initVrmEditor() {
       if (!captureActive) startLiveCapture();
       else stopLiveCapture();
     });
+
+  // ── Drive from a video file ──────────────────────────────────────────────
+  const captureVideoInput = document.getElementById('vrm-capture-video-input');
+  document.getElementById('vrm-capture-video-btn')
+    ?.addEventListener('click', () => captureVideoInput?.click());
+  captureVideoInput?.addEventListener('change', () => {
+    const f = captureVideoInput.files?.[0];
+    if (f) startVideoCapture(f);
+    captureVideoInput.value = '';
+  });
 
   // ── Camera presets ───────────────────────────────────────────────────────
   ['front', 'side', 'top', 'quarter'].forEach(name => {
