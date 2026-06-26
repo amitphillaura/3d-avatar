@@ -58,17 +58,36 @@ QUADRUPED_CLASSES = {"dog", "cat", "horse", "cow", "sheep", "bear"}
 PADDING_RATIO = 0.15
 NUM_KEYPOINTS = 17
 
-# AP-10K model config / checkpoint paths — users must set these or we skip Stage 2.
-# Download from: https://github.com/open-mmlab/mmpose/tree/main/configs/animal_2d_keypoint/topdown_heatmap/ap10k
-AP10K_CONFIG = "configs/animal_2d_keypoint/topdown_heatmap/ap10k/td-hm_hrnet-w32_8xb64-210e_ap10k-256x256.py"
-AP10K_CHECKPOINT = "checkpoints/td-hm_hrnet-w32_8xb64-210e_ap10k-256x256-18010f45_20211029.pth"
-
-
 def parse_args():
-    parser = argparse.ArgumentParser(description="Animal pose extractor (YOLO + MMPose AP-10K)")
+    parser = argparse.ArgumentParser(
+        description="Animal pose extractor (YOLO + MMPose AP-10K)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+AP-10K setup (required for keypoints):
+  1. pip install torch torchvision  # must come first
+  2. pip install mmcv mmengine mmdet mmpose
+  3. Download config + checkpoint:
+       mim download mmpose --config td-hm_hrnet-w32_8xb64-210e_ap10k-256x256 --dest ./checkpoints
+     Or manually from:
+       https://github.com/open-mmlab/mmpose/tree/main/configs/animal_2d_keypoint/topdown_heatmap/ap10k
+  4. Pass --ap10k-config and --ap10k-checkpoint to this script.
+
+Without --ap10k-config/--ap10k-checkpoint, runs YOLO-only (bounding box, no keypoints).
+        """,
+    )
     parser.add_argument("--video", required=True, help="Input video file path")
     parser.add_argument("--output", required=True, help="Output JSON file path")
-    parser.add_argument("--fps", type=float, default=15.0, help="Target FPS for sampling")
+    parser.add_argument("--fps", type=float, default=15.0, help="Target FPS for sampling (default: 15)")
+    parser.add_argument(
+        "--ap10k-config",
+        default=None,
+        help="Path to MMPose AP-10K config .py file (enables keypoint estimation)",
+    )
+    parser.add_argument(
+        "--ap10k-checkpoint",
+        default=None,
+        help="Path to MMPose AP-10K checkpoint .pth file",
+    )
     return parser.parse_args()
 
 
@@ -133,25 +152,33 @@ def mmpose_keypoints_from_result(pose_result):
     return kps
 
 
-def load_mmpose_model():
-    """Try to load the AP-10K model; return None with warning if unavailable."""
+def load_mmpose_model(config_path, checkpoint_path):
+    """Try to load the AP-10K model; return None with a clear error if unavailable."""
     if not MMPOSE_AVAILABLE:
         return None
-    import os
-    if not os.path.exists(AP10K_CONFIG) or not os.path.exists(AP10K_CHECKPOINT):
+    if not config_path or not checkpoint_path:
         print(
-            f"WARNING: AP-10K config or checkpoint not found at expected paths:\n"
-            f"  config:     {AP10K_CONFIG}\n"
-            f"  checkpoint: {AP10K_CHECKPOINT}\n"
-            "Falling back to YOLO-only mode (no keypoints).",
+            "INFO: --ap10k-config / --ap10k-checkpoint not provided. "
+            "Running YOLO-only mode (bounding box, no keypoints). "
+            "Pass both flags to enable full pose estimation.",
+            file=sys.stderr,
+        )
+        return None
+    import os
+    missing = [p for p in [config_path, checkpoint_path] if not os.path.exists(p)]
+    if missing:
+        print(
+            f"ERROR: MMPose file(s) not found:\n" +
+            "\n".join(f"  {p}" for p in missing) +
+            "\nFalling back to YOLO-only mode. Run with --help for setup instructions.",
             file=sys.stderr,
         )
         return None
     try:
-        model = mmpose_init_model(AP10K_CONFIG, AP10K_CHECKPOINT, device="cpu")
+        model = mmpose_init_model(config_path, checkpoint_path, device="cpu")
         return model
     except Exception as exc:
-        print(f"WARNING: Failed to load MMPose model: {exc}. Falling back to YOLO-only.", file=sys.stderr)
+        print(f"ERROR: Failed to load MMPose model: {exc}\nFalling back to YOLO-only.", file=sys.stderr)
         return None
 
 
@@ -207,7 +234,7 @@ def main():
     args = parse_args()
 
     yolo_model = YOLO("yolov8n.pt")
-    pose_model = load_mmpose_model()
+    pose_model = load_mmpose_model(args.ap10k_config, args.ap10k_checkpoint)
 
     cap = cv2.VideoCapture(args.video)
     if not cap.isOpened():

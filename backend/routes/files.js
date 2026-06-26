@@ -1,23 +1,12 @@
-import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, renameSync, unlinkSync, copyFileSync, statSync, readdirSync } from "node:fs";
+import { existsSync, renameSync, unlinkSync, copyFileSync, statSync, readdirSync } from "node:fs";
 import { extname, resolve, join, basename } from "node:path";
 import { homedir } from "node:os";
 import { getDb } from "../db/index.js";
-import { newVideoId, processVideoJob } from "../lib/processor.js";
+import { newVideoId, processVideoJob, sha256File } from "../lib/processor.js";
 import { ensureVideoDir, videoDir } from "../lib/paths.js";
 
 const VIDEO_EXTS = new Set([".mp4", ".mov", ".avi", ".webm", ".mkv", ".m4v"]);
 const ALLOWED_ROOT = resolve(process.env.FILES_ROOT || join(homedir(), "Downloads"));
-
-function sha256File(path) {
-  return new Promise((res, rej) => {
-    const hash = createHash("sha256");
-    createReadStream(path)
-      .on("data", (chunk) => hash.update(chunk))
-      .on("error", rej)
-      .on("end", () => res(hash.digest("hex")));
-  });
-}
 
 function ensureProgressColumn(db) {
   const cols = db.prepare("PRAGMA table_info(videos)").all();

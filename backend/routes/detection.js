@@ -4,38 +4,61 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { getDb } from "../db/index.js";
-import { videoDir } from "../lib/paths.js";
+import { videoDir, DATA_ROOT } from "../lib/paths.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DETECT_PY = join(__dirname, "../worker/detect.py");
-const TMP_DIR = join(__dirname, "../data/detect_tmp");
+const TMP_DIR = join(DATA_ROOT, "detect_tmp");
 
 function ensureTmpDir() {
   if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
 }
 
-/**
- * Run detect.py asynchronously and return parsed detections.
- * Using async spawn (not spawnSync) to avoid blocking the event loop.
- */
+// ─── Persistent YOLO worker ───────────────────────────────────────────────────
+// detect.py runs in a persistent loop: one process stays alive, model stays
+// warm. Each request/response is a single newline-delimited JSON line.
+let _worker = null;
+let _workerBuf = "";
+const _pending = []; // { resolve, reject, timer }
+
+function getWorker() {
+  if (_worker && !_worker.killed) return _worker;
+  _worker = spawn("python3", [DETECT_PY], { stdio: ["pipe", "pipe", "pipe"] });
+  _workerBuf = "";
+  _worker.stdout.on("data", (chunk) => {
+    _workerBuf += chunk.toString();
+    const lines = _workerBuf.split("\n");
+    _workerBuf = lines.pop();
+    for (const line of lines) {
+      const waiter = _pending.shift();
+      if (!waiter) continue;
+      clearTimeout(waiter.timer);
+      try { waiter.resolve(JSON.parse(line)); }
+      catch { waiter.reject(new Error(`detect.py bad output: ${line}`)); }
+    }
+  });
+  _worker.stderr.on("data", (c) => { /* model load noise — ignore */ });
+  _worker.on("error", (err) => {
+    _worker = null;
+    for (const w of _pending.splice(0)) { clearTimeout(w.timer); w.reject(err); }
+  });
+  _worker.on("close", () => {
+    _worker = null;
+    for (const w of _pending.splice(0)) { clearTimeout(w.timer); w.reject(new Error("detect worker exited")); }
+  });
+  return _worker;
+}
+
 function runDetect(imagePath, confidence = 0.4) {
-  const payload = JSON.stringify({ image_path: imagePath, confidence });
   return new Promise((resolve, reject) => {
-    const child = spawn("python3", [DETECT_PY], { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => { child.kill(); reject(new Error("detect.py timed out")); }, 30000);
-    child.stdout.on("data", (c) => { stdout += c; });
-    child.stderr.on("data", (c) => { stderr += c; });
-    child.on("error", (err) => { clearTimeout(timer); reject(new Error(`detect.py spawn error: ${err.message}`)); });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code !== 0) { reject(new Error(`detect.py exited ${code}: ${stderr.trim()}`)); return; }
-      try { resolve(JSON.parse(stdout.trim())); }
-      catch { reject(new Error(`detect.py bad output: ${stdout}`)); }
-    });
-    child.stdin.write(payload);
-    child.stdin.end();
+    const timer = setTimeout(() => {
+      const idx = _pending.findIndex(p => p.resolve === resolve);
+      if (idx !== -1) _pending.splice(idx, 1);
+      reject(new Error("detect.py timed out"));
+    }, 30000);
+    _pending.push({ resolve, reject, timer });
+    const worker = getWorker();
+    worker.stdin.write(JSON.stringify({ image_path: imagePath, confidence }) + "\n");
   });
 }
 

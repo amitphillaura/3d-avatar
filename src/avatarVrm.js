@@ -114,12 +114,70 @@ export class VrmAvatar {
     } catch (err) {
       if (this._disposed) return;
       console.warn("[VrmAvatar] VRM load failed:", err.message ?? err);
-      this._placeholder.textContent = "No VRM loaded — place default.vrm in /public/vrm/";
-      if (this._meta) this._meta.textContent = "VRM Avatar · no model";
+      this._showDropZone();
+      if (this._meta) this._meta.textContent = "VRM Avatar · drop a .vrm file";
     }
 
     // Start render loop regardless (renders empty scene or placeholder)
     this._startLoop();
+  }
+
+  _showDropZone() {
+    this._placeholder.style.pointerEvents = "all";
+    this._placeholder.style.flexDirection = "column";
+    this._placeholder.style.gap = "10px";
+    this._placeholder.style.cursor = "pointer";
+    this._placeholder.innerHTML =
+      `<span style="font-size:28px">&#x1F9CD;</span>` +
+      `<span>Drop a .vrm file here</span>` +
+      `<span style="font-size:11px;color:#555">or click to browse</span>`;
+
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".vrm";
+    fileInput.style.display = "none";
+    this._placeholder.appendChild(fileInput);
+
+    const loadFile = (file) => {
+      if (!file || !file.name.endsWith(".vrm")) return;
+      const url = URL.createObjectURL(file);
+      this._placeholder.innerHTML = "Loading VRM…";
+      this._placeholder.style.pointerEvents = "none";
+      this._loadVrmFromUrl(url).then(() => URL.revokeObjectURL(url));
+    };
+
+    this._placeholder.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => loadFile(fileInput.files[0]));
+
+    this._placeholder.addEventListener("dragover", (e) => { e.preventDefault(); this._placeholder.style.outline = "2px dashed #fff4"; });
+    this._placeholder.addEventListener("dragleave", () => { this._placeholder.style.outline = ""; });
+    this._placeholder.addEventListener("drop", (e) => {
+      e.preventDefault();
+      this._placeholder.style.outline = "";
+      loadFile(e.dataTransfer.files[0]);
+    });
+  }
+
+  async _loadVrmFromUrl(url) {
+    const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+    const { VRMLoaderPlugin } = await import("@pixiv/three-vrm");
+    const loader = new GLTFLoader();
+    loader.register((parser) => new VRMLoaderPlugin(parser));
+    try {
+      const gltf = await new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
+      if (this._disposed) return;
+      const vrm = gltf.userData.vrm;
+      if (!vrm) throw new Error("No VRM data in file.");
+      if (this._vrm) { this._scene.remove(this._vrm.scene); }
+      this._vrm = vrm;
+      this._scene.add(vrm.scene);
+      this._placeholder.textContent = "";
+      this._placeholder.style.pointerEvents = "none";
+      if (this._meta) this._meta.textContent = "VRM Avatar · ready";
+    } catch (err) {
+      console.warn("[VrmAvatar] VRM load failed:", err.message ?? err);
+      this._placeholder.innerHTML = `<span>Load failed — try another file</span>`;
+    }
   }
 
   _startLoop() {
