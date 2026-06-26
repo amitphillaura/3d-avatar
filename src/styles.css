@@ -960,6 +960,10 @@ a.btn {
   white-space: nowrap;
 }
 
+.motion-replay-bar[hidden] {
+  display: none !important;
+}
+
 .motion-replay-bar {
   display: grid;
   gap: 6px;

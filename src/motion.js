@@ -1,18 +1,5 @@
 const API_BASE = "";
 
-const apiStatusEl = document.getElementById("apiStatus");
-const videoListEl = document.getElementById("videoList");
-const detailPanelEl = document.getElementById("detailPanel");
-const detailTitleEl = document.getElementById("detailTitle");
-const detailMetaEl = document.getElementById("detailMeta");
-const detailVideoEl = document.getElementById("detailVideo");
-const tagListEl = document.getElementById("tagList");
-const segmentListEl = document.getElementById("segmentList");
-const framePreviewEl = document.getElementById("framePreview");
-const searchResultsEl = document.getElementById("searchResults");
-
-let selectedVideoId = null;
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -38,271 +25,307 @@ function statusPill(status) {
   return `<span class="${cls}">${escapeHtml(status)}</span>`;
 }
 
-function renderVideos(videos) {
-  if (!videos.length) {
-    videoListEl.innerHTML = `<p class="motion-subtitle">No videos yet. Upload one to start.</p>`;
-    return;
-  }
+/** Mount Motion Library in the main page dock (bottom-right). */
+export function initMotionLibrary(options = {}) {
+  const onPlaySegment = options.onPlaySegment || ((segmentId) => {
+    window.location.href = `/?replay=${encodeURIComponent(segmentId)}`;
+  });
+  const getUploadMeta =
+    options.getUploadMeta ||
+    (() => ({ rig_variant: "mushy", tracking_mode: "both" }));
+  const onStatus = options.onStatus || (() => {});
 
-  videoListEl.innerHTML = videos
-    .map(
-      (video) => `
-      <div class="motion-item">
-        <div class="motion-item-head">
-          <div>
-            <strong>${escapeHtml(video.filename)}</strong>
-            <div class="motion-subtitle">${video.frame_count || 0} frames · ${escapeHtml(video.rig_variant)}</div>
-          </div>
+  const apiStatusEl = document.getElementById("motionApiStatus");
+  const videoListEl = document.getElementById("motionVideoList");
+  const detailPanelEl = document.getElementById("motionDetailPanel");
+  const detailTitleEl = document.getElementById("motionDetailTitle");
+  const detailMetaEl = document.getElementById("motionDetailMeta");
+  const segmentListEl = document.getElementById("motionSegmentList");
+  const searchResultsEl = document.getElementById("motionSearchResults");
+  const processBtn = document.getElementById("motionProcessVideo");
+  const deleteBtn = document.getElementById("motionDeleteVideo");
+
+  if (!videoListEl) return null;
+
+  let selectedVideoId = null;
+  let pollTimer = null;
+
+  function renderVideos(videos) {
+    if (!videos.length) {
+      videoListEl.innerHTML = `<p class="motion-dock-empty">No videos yet — send the current clip or upload one.</p>`;
+      return;
+    }
+
+    videoListEl.innerHTML = videos
+      .map(
+        (video) => `
+      <div class="motion-dock-item${video.id === selectedVideoId ? " is-selected" : ""}">
+        <button type="button" class="motion-dock-item-main" data-action="open" data-id="${escapeHtml(video.id)}">
+          <strong>${escapeHtml(video.filename)}</strong>
+          <span class="motion-dock-item-meta">${video.frame_count || 0} fr · ${escapeHtml(video.rig_variant)}</span>
+        </button>
+        <div class="motion-dock-item-side">
           ${statusPill(video.status)}
         </div>
-        <div class="motion-item-actions">
-          <button type="button" class="btn" data-action="open" data-id="${escapeHtml(video.id)}">Open</button>
-          <button type="button" class="btn" data-action="process" data-id="${escapeHtml(video.id)}" ${video.status === "processing" ? "disabled" : ""}>
-            ${video.status === "ready" ? "Reprocess" : "Process"}
-          </button>
-          <button type="button" class="btn btn--ghost" data-action="delete" data-id="${escapeHtml(video.id)}" ${video.status === "processing" ? "disabled" : ""}>
-            Delete
-          </button>
-        </div>
-        ${video.error_message ? `<p class="motion-subtitle">${escapeHtml(video.error_message)}</p>` : ""}
       </div>`
-    )
-    .join("");
-}
-
-function renderTags(tags) {
-  tagListEl.innerHTML = tags
-    .map((tag) => `<li class="motion-pill">${escapeHtml(tag.tag_type)}: ${escapeHtml(tag.tag_value)}</li>`)
-    .join("");
-}
-
-function renderSegments(segments) {
-  if (!segments.length) {
-    segmentListEl.innerHTML = `<p class="motion-subtitle">No segments yet.</p>`;
-    return;
+      )
+      .join("");
   }
 
-  segmentListEl.innerHTML = segments
-    .map(
-      (segment) => `
-      <div class="motion-item">
-        <div class="motion-item-head">
-          <div>
-            <strong>${escapeHtml(segment.label || "Untitled segment")}</strong>
-            <div class="motion-subtitle">frames ${segment.start_frame}–${segment.end_frame}</div>
-            <div class="motion-subtitle">${escapeHtml(segment.word_prompt || "No word prompt")}</div>
-          </div>
-          <span class="motion-pill">${escapeHtml(segment.matrix_status)}</span>
+  function renderSegments(segments) {
+    if (!segmentListEl) return;
+    if (!segments.length) {
+      segmentListEl.innerHTML = `<p class="motion-dock-empty">No segments — mark a frame range below.</p>`;
+      return;
+    }
+
+    segmentListEl.innerHTML = segments
+      .map(
+        (segment) => `
+      <div class="motion-dock-item motion-dock-item--segment">
+        <div class="motion-dock-item-main motion-dock-item-main--static">
+          <strong>${escapeHtml(segment.label || "Untitled")}</strong>
+          <span class="motion-dock-item-meta">${segment.start_frame}–${segment.end_frame} · ${escapeHtml(segment.word_prompt || "no prompt")}</span>
         </div>
-        <div class="motion-item-actions">
-          <button type="button" class="btn" data-segment-action="matrix" data-id="${escapeHtml(segment.id)}">Build matrix</button>
-          <a class="btn btn--ghost" href="/?replay=${escapeHtml(segment.id)}">Play in Rig</a>
-          <button type="button" class="btn btn--ghost" data-segment-action="export" data-id="${escapeHtml(segment.id)}">Export JSON</button>
+        <div class="motion-dock-item-actions">
+          <button type="button" class="btn btn--small" data-segment-action="play" data-id="${escapeHtml(segment.id)}">Play</button>
+          <button type="button" class="btn btn--small btn--ghost" data-segment-action="matrix" data-id="${escapeHtml(segment.id)}">Matrix</button>
+          <button type="button" class="btn btn--small btn--ghost" data-segment-action="export" data-id="${escapeHtml(segment.id)}">JSON</button>
         </div>
       </div>`
-    )
-    .join("");
-}
+      )
+      .join("");
+  }
 
-async function refreshVideos() {
-  const { videos } = await api("/api/videos");
-  renderVideos(videos);
-  if (selectedVideoId) {
-    const current = videos.find((video) => video.id === selectedVideoId);
-    if (current?.status === "processing") {
-      window.setTimeout(refreshVideos, 2000);
+  function syncDetailActions(video) {
+    if (!processBtn || !deleteBtn) return;
+    const processing = video?.status === "processing";
+    processBtn.disabled = processing;
+    deleteBtn.disabled = processing;
+    processBtn.textContent = video?.status === "ready" ? "Reprocess" : "Process";
+  }
+
+  async function refreshVideos() {
+    const { videos } = await api("/api/videos");
+    renderVideos(videos);
+    if (selectedVideoId) {
+      const current = videos.find((video) => video.id === selectedVideoId);
+      syncDetailActions(current);
+      if (current?.status === "processing") {
+        clearTimeout(pollTimer);
+        pollTimer = window.setTimeout(refreshVideos, 2000);
+      }
+    }
+    return videos;
+  }
+
+  async function openVideo(videoId) {
+    const detail = await api(`/api/videos/${videoId}`);
+    selectedVideoId = videoId;
+    if (detailPanelEl) detailPanelEl.hidden = false;
+    if (detailTitleEl) detailTitleEl.textContent = detail.video.filename;
+    if (detailMetaEl) {
+      detailMetaEl.innerHTML = [
+        statusPill(detail.video.status),
+        `<span class="motion-pill">${escapeHtml(detail.video.rig_variant)}</span>`,
+        `<span class="motion-pill">${detail.video.frame_count || 0} fr</span>`
+      ].join("");
+    }
+    const endInput = document.getElementById("motionSegmentEnd");
+    if (endInput) endInput.value = Math.max(30, (detail.video.frame_count || 30) - 1);
+    syncDetailActions(detail.video);
+    renderSegments(detail.segments);
+    await refreshVideos();
+    return detail;
+  }
+
+  function closeDetail() {
+    selectedVideoId = null;
+    if (detailPanelEl) detailPanelEl.hidden = true;
+    refreshVideos().catch(() => {});
+  }
+
+  async function checkApi() {
+    if (!apiStatusEl) return;
+    try {
+      await api("/api/health");
+      apiStatusEl.textContent = "API online";
+      apiStatusEl.classList.add("motion-api-status--ok");
+      apiStatusEl.classList.remove("motion-api-status--warn");
+    } catch (error) {
+      apiStatusEl.textContent = "API offline";
+      apiStatusEl.title = `Run npm run backend (${error.message})`;
+      apiStatusEl.classList.add("motion-api-status--warn");
+      apiStatusEl.classList.remove("motion-api-status--ok");
     }
   }
-}
 
-async function openVideo(videoId) {
-  const detail = await api(`/api/videos/${videoId}`);
-  selectedVideoId = videoId;
-  detailPanelEl.hidden = false;
-  detailTitleEl.textContent = detail.video.filename;
-  detailMetaEl.innerHTML = [
-    statusPill(detail.video.status),
-    `<span class="motion-pill">${escapeHtml(detail.video.rig_variant)}</span>`,
-    `<span class="motion-pill">${detail.video.frame_count || 0} frames</span>`,
-    `<span class="motion-pill">${escapeHtml(detail.video.tracking_mode)}</span>`
-  ].join("");
-  detailVideoEl.src = `/api/videos/${videoId}/source`;
-  document.getElementById("segmentEnd").value = Math.max(30, (detail.video.frame_count || 30) - 1);
-  renderTags(detail.tags);
-  renderSegments(detail.segments);
-}
-
-async function checkApi() {
-  try {
-    await api("/api/health");
-    apiStatusEl.textContent = "Motion API online";
-  } catch (error) {
-    apiStatusEl.textContent = `Motion API offline — run npm run backend (${error.message})`;
-  }
-}
-
-document.getElementById("uploadForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const fileInput = document.getElementById("videoFile");
-  const file = fileInput.files?.[0];
-  if (!file) return;
-
-  const body = new FormData();
-  body.append("file", file);
-  body.append("rig_variant", document.getElementById("rigVariant").value);
-  body.append("tracking_mode", document.getElementById("trackingMode").value);
-
-  try {
+  async function uploadFile(file) {
+    if (!file) return null;
+    const meta = getUploadMeta();
+    const body = new FormData();
+    body.append("file", file);
+    body.append("rig_variant", meta.rig_variant || "mushy");
+    body.append("tracking_mode", meta.tracking_mode || "both");
     const result = await api("/api/videos", { method: "POST", body });
-    fileInput.value = "";
     await refreshVideos();
     await openVideo(result.video_id);
-  } catch (error) {
-    window.alert(error.message);
+    onStatus(`Uploaded ${file.name}`, "success");
+    return result;
   }
-});
 
-document.getElementById("refreshVideos").addEventListener("click", () => {
-  refreshVideos().catch((error) => window.alert(error.message));
-});
-
-videoListEl.addEventListener("click", async (event) => {
-  const button = event.target.closest("button[data-action]");
-  if (!button) return;
-  const videoId = button.dataset.id;
-  try {
-    if (button.dataset.action === "open") {
-      await openVideo(videoId);
-      return;
-    }
-    if (button.dataset.action === "process") {
-      await api(`/api/videos/${videoId}/process`, { method: "POST" });
-      await refreshVideos();
-      if (selectedVideoId === videoId) await openVideo(videoId);
-      return;
-    }
-    if (button.dataset.action === "delete") {
-      if (!window.confirm("Delete this video and all segments?")) return;
-      await api(`/api/videos/${videoId}`, { method: "DELETE" });
-      if (selectedVideoId === videoId) {
-        detailPanelEl.hidden = true;
-        selectedVideoId = null;
-      }
-      await refreshVideos();
-    }
-  } catch (error) {
-    window.alert(error.message);
-  }
-});
-
-document.getElementById("closeDetail").addEventListener("click", () => {
-  detailPanelEl.hidden = true;
-  selectedVideoId = null;
-});
-
-document.getElementById("tagForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!selectedVideoId) return;
-  try {
-    await api(`/api/videos/${selectedVideoId}/tags`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tag_type: document.getElementById("tagType").value,
-        tag_value: document.getElementById("tagValue").value
-      })
-    });
-    await openVideo(selectedVideoId);
-  } catch (error) {
-    window.alert(error.message);
-  }
-});
-
-document.getElementById("segmentForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!selectedVideoId) return;
-  try {
-    await api(`/api/videos/${selectedVideoId}/segments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        start_frame: Number(document.getElementById("segmentStart").value),
-        end_frame: Number(document.getElementById("segmentEnd").value),
-        label: document.getElementById("segmentLabel").value,
-        motion_type: document.getElementById("segmentMotionType").value,
-        word_prompt: document.getElementById("segmentWordPrompt").value
-      })
-    });
-    await openVideo(selectedVideoId);
-  } catch (error) {
-    window.alert(error.message);
-  }
-});
-
-segmentListEl.addEventListener("click", async (event) => {
-  const button = event.target.closest("button[data-segment-action]");
-  if (!button) return;
-  const segmentId = button.dataset.id;
-  try {
-    if (button.dataset.segmentAction === "matrix") {
-      await api(`/api/segments/${segmentId}/build-matrix`, { method: "POST" });
-      await openVideo(selectedVideoId);
-      return;
-    }
-    if (button.dataset.segmentAction === "export") {
-      const payload = await api(`/api/segments/${segmentId}/export`);
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${segmentId}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-    }
-  } catch (error) {
-    window.alert(error.message);
-  }
-});
-
-document.getElementById("frameForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!selectedVideoId) return;
-  const frameIndex = Number(document.getElementById("frameIndex").value);
-  try {
-    const payload = await api(`/api/videos/${selectedVideoId}/frames/${frameIndex}`);
-    framePreviewEl.textContent = JSON.stringify(payload.frame, null, 2);
-  } catch (error) {
-    window.alert(error.message);
-  }
-});
-
-document.getElementById("searchForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const q = document.getElementById("searchQuery").value.trim();
-  try {
-    const { results } = await api(`/api/search/motion?q=${encodeURIComponent(q)}`);
-    searchResultsEl.innerHTML = results.length
-      ? results
-          .map(
-            ({ segment, score }) => `
-            <div class="motion-item">
-              <div class="motion-item-head">
-                <div>
-                  <strong>${escapeHtml(segment.word_prompt || segment.label || "Untitled")}</strong>
-                  <div class="motion-subtitle">${escapeHtml(segment.filename || segment.video_id)} · score ${score.toFixed(2)}</div>
-                </div>
+  document.getElementById("motionSearchForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const q = document.getElementById("motionSearchQuery")?.value.trim() || "";
+    if (!searchResultsEl) return;
+    try {
+      const { results } = await api(`/api/search/motion?q=${encodeURIComponent(q)}`);
+      searchResultsEl.hidden = false;
+      searchResultsEl.innerHTML = results.length
+        ? results
+            .map(
+              ({ segment, score }) => `
+            <div class="motion-dock-item motion-dock-item--segment">
+              <div class="motion-dock-item-main motion-dock-item-main--static">
+                <strong>${escapeHtml(segment.word_prompt || segment.label || "Untitled")}</strong>
+                <span class="motion-dock-item-meta">score ${score.toFixed(2)}</span>
               </div>
-              <div class="motion-item-actions">
-                <a class="btn btn--ghost" href="/?replay=${escapeHtml(segment.id)}">Play in Rig</a>
-              </div>
+              <button type="button" class="btn btn--small" data-search-play="${escapeHtml(segment.id)}">Play</button>
             </div>`
-          )
-          .join("")
-      : `<p class="motion-subtitle">No matches.</p>`;
-  } catch (error) {
-    window.alert(error.message);
-  }
-});
+            )
+            .join("")
+        : `<p class="motion-dock-empty">No matches.</p>`;
+    } catch (error) {
+      onStatus(error.message, "danger");
+    }
+  });
 
-checkApi();
-refreshVideos().catch(() => {});
+  document.getElementById("motionSearchClear")?.addEventListener("click", () => {
+    if (!searchResultsEl) return;
+    searchResultsEl.hidden = true;
+    searchResultsEl.innerHTML = "";
+    const input = document.getElementById("motionSearchQuery");
+    if (input) input.value = "";
+  });
+
+  searchResultsEl?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-search-play]");
+    if (!button) return;
+    onPlaySegment(button.dataset.searchPlay);
+  });
+
+  document.getElementById("motionRefreshVideos")?.addEventListener("click", () => {
+    refreshVideos().catch((error) => onStatus(error.message, "danger"));
+  });
+
+  document.getElementById("motionUploadFile")?.addEventListener("change", async (event) => {
+    const input = event.target;
+    const [file] = input.files || [];
+    input.value = "";
+    if (!file) return;
+    try {
+      await uploadFile(file);
+    } catch (error) {
+      onStatus(error.message, "danger");
+    }
+  });
+
+  videoListEl.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-action]");
+    if (!button || button.dataset.action !== "open") return;
+    try {
+      await openVideo(button.dataset.id);
+    } catch (error) {
+      onStatus(error.message, "danger");
+    }
+  });
+
+  document.getElementById("motionCloseDetail")?.addEventListener("click", closeDetail);
+
+  processBtn?.addEventListener("click", async () => {
+    if (!selectedVideoId) return;
+    try {
+      await api(`/api/videos/${selectedVideoId}/process`, { method: "POST" });
+      onStatus("Processing video…", "warning");
+      await refreshVideos();
+      await openVideo(selectedVideoId);
+    } catch (error) {
+      onStatus(error.message, "danger");
+    }
+  });
+
+  deleteBtn?.addEventListener("click", async () => {
+    if (!selectedVideoId) return;
+    if (!window.confirm("Delete this video and all segments?")) return;
+    try {
+      await api(`/api/videos/${selectedVideoId}`, { method: "DELETE" });
+      closeDetail();
+      onStatus("Video deleted", "success");
+    } catch (error) {
+      onStatus(error.message, "danger");
+    }
+  });
+
+  document.getElementById("motionSegmentForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!selectedVideoId) return;
+    try {
+      await api(`/api/videos/${selectedVideoId}/segments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start_frame: Number(document.getElementById("motionSegmentStart")?.value),
+          end_frame: Number(document.getElementById("motionSegmentEnd")?.value),
+          label: document.getElementById("motionSegmentLabel")?.value,
+          motion_type: document.getElementById("motionSegmentMotionType")?.value,
+          word_prompt: document.getElementById("motionSegmentWordPrompt")?.value
+        })
+      });
+      await openVideo(selectedVideoId);
+      onStatus("Segment created", "success");
+    } catch (error) {
+      onStatus(error.message, "danger");
+    }
+  });
+
+  segmentListEl?.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-segment-action]");
+    if (!button) return;
+    const segmentId = button.dataset.id;
+    try {
+      if (button.dataset.segmentAction === "play") {
+        onPlaySegment(segmentId);
+        return;
+      }
+      if (button.dataset.segmentAction === "matrix") {
+        await api(`/api/segments/${segmentId}/build-matrix`, { method: "POST" });
+        await openVideo(selectedVideoId);
+        onStatus("Matrix built", "success");
+        return;
+      }
+      if (button.dataset.segmentAction === "export") {
+        const payload = await api(`/api/segments/${segmentId}/export`);
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${segmentId}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      onStatus(error.message, "danger");
+    }
+  });
+
+  checkApi();
+  refreshVideos().catch(() => {});
+
+  return {
+    refreshVideos,
+    openVideo,
+    uploadFile,
+    closeDetail,
+    getSelectedVideoId: () => selectedVideoId
+  };
+}

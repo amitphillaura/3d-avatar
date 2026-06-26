@@ -20,7 +20,7 @@ npm run dev              # Pose tester + /api proxy
 npm run start:full       # build + backend + prod UI on :5180
 ```
 
-UI: http://127.0.0.1:5180/motion.html (or http://127.0.0.1:5173/motion.html in dev)
+UI: embedded in the main page (lower-right dock) at http://127.0.0.1:5180/ (or http://127.0.0.1:5173/ in dev). `/motion.html` redirects to `/`.
 
 ## Data layout
 

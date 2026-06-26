@@ -4,7 +4,7 @@ Local-only pose/face tester: MediaPipe Holistic → 2D skeleton panes + procedur
 (32 selectable character variants).
 
 **Prod URL:** http://127.0.0.1:5180/ (`npm run start` or `npm run autostart:install`)  
-**Motion Library:** http://127.0.0.1:5180/motion.html (`npm run backend` + prod, or `npm run start:full`)  
+**Motion Library:** lower-right panel on http://127.0.0.1:5180/ (`npm run backend` + prod, or `npm run start:full`)  
 **Motion replay:** open a segment in the pose tester via **Play in Rig** or `http://127.0.0.1:5180/?replay=<segment_id>`
 
 ## What works

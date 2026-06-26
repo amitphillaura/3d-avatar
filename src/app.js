@@ -1,5 +1,7 @@
 import "./styles.css";
+import "./motion.css";
 import { RigHost } from "./rigHost.js";
+import { initMotionLibrary } from "./motion.js";
 import { MotionReplay, frameToHolisticResults } from "./motionReplay.js";
 import { captureVideoPoster, getProjectMedia } from "./mediaLibrary.js";
 import {
@@ -172,6 +174,7 @@ let glowTrails = [];
 let frameTick = 0;
 let holistic = null;
 let rigHost = null;
+let motionLibrary = null;
 let motionReplay = null;
 let replayCanvas = null;
 let videoObjectUrl = null;
@@ -1590,10 +1593,8 @@ async function sendVideoToMotionLibrary() {
     if (!response.ok) {
       throw new Error(payload.error || `Upload failed (${response.status})`);
     }
-    setStatus(
-      `Uploaded to Motion Library. Open Motion Library to process (${payload.video_id}).`,
-      "success"
-    );
+    await motionLibrary?.openVideo?.(payload.video_id);
+    setStatus(`Uploaded to Motion Library — select Process in the panel below.`, "success");
   } catch (error) {
     setStatus(`Motion Library upload failed: ${error.message}`, "danger");
   }
@@ -2600,6 +2601,14 @@ async function bootApp() {
   try {
     await initRigHost();
     initMotionReplay();
+    motionLibrary = initMotionLibrary({
+      getUploadMeta: () => ({
+        rig_variant: rigVariantSelect?.value || "mushy",
+        tracking_mode: modeSelect?.value || "both"
+      }),
+      onPlaySegment: (segmentId) => loadMotionReplaySegment(segmentId, { autoplay: true }),
+      onStatus: (message, tone = "warning") => setStatus(message, tone)
+    });
     rigReady = true;
   } catch (error) {
     console.error(error);

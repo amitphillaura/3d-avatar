@@ -80,8 +80,6 @@
           </div>
 
           <div class="sidebar-section sidebar-section--actions">
-            <a href="/motion.html" class="btn btn--link">Motion Library</a>
-            <button id="sendToMotionLibrary" type="button" class="btn" disabled>Send to Motion Library</button>
             <button id="loadMotionReplay" type="button" class="btn">Load Motion JSON</button>
             <input id="motionReplayFile" type="file" accept="application/json,.json" hidden />
             <button id="downloadSnapshot" type="button" class="btn">Download Snapshot</button>
@@ -408,15 +406,80 @@
               </article>
             </section>
 
-            <section class="dock-row" aria-label="Export and status">
-              <article class="dock-card dock-card--export" aria-label="Export and status">
-                <header class="dock-header">
-                  <h3>Export / Status</h3>
-                  <span id="systemStatus" class="system-status">All systems operational</span>
+            <section class="dock-row" aria-label="Motion library and export">
+              <article class="dock-card dock-card--motion" aria-label="Motion library">
+                <header class="dock-header motion-dock-header">
+                  <h3>Motion Library</h3>
+                  <span id="motionApiStatus" class="motion-api-status">Checking…</span>
                 </header>
-                <p class="export-meta">Last export: <span id="lastExportTime">never</span></p>
-                <p class="export-hint">Use Copy JSON or Export JSON Pose to capture landmark data.</p>
-                <button id="exportPoseBtn" type="button" class="btn btn--small">Export JSON Pose</button>
+                <div class="motion-dock-body">
+                  <form id="motionSearchForm" class="motion-dock-search">
+                    <input
+                      id="motionSearchQuery"
+                      type="search"
+                      placeholder="Search motions…"
+                      aria-label="Search motion library"
+                    />
+                    <button type="submit" class="btn btn--small">Search</button>
+                    <button id="motionSearchClear" type="button" class="btn btn--small btn--ghost">Clear</button>
+                  </form>
+                  <div id="motionSearchResults" class="motion-dock-panel" hidden></div>
+
+                  <div class="motion-dock-toolbar">
+                    <button id="sendToMotionLibrary" type="button" class="btn btn--small" disabled>
+                      Send current video
+                    </button>
+                    <label class="btn btn--small motion-dock-upload">
+                      <input id="motionUploadFile" type="file" accept="video/*" hidden />
+                      Upload
+                    </label>
+                    <button id="motionRefreshVideos" type="button" class="btn btn--small btn--ghost">Refresh</button>
+                  </div>
+
+                  <div id="motionVideoList" class="motion-dock-list">
+                    <p class="motion-dock-empty">Loading…</p>
+                  </div>
+
+                  <div id="motionDetailPanel" class="motion-dock-detail" hidden>
+                    <div class="motion-dock-detail-head">
+                      <strong id="motionDetailTitle">Video</strong>
+                      <button id="motionCloseDetail" type="button" class="btn btn--small btn--ghost">Close</button>
+                    </div>
+                    <div id="motionDetailMeta" class="motion-dock-meta"></div>
+                    <div class="motion-dock-detail-actions">
+                      <button id="motionProcessVideo" type="button" class="btn btn--small">Process</button>
+                      <button id="motionDeleteVideo" type="button" class="btn btn--small btn--ghost">Delete</button>
+                    </div>
+                    <form id="motionSegmentForm" class="motion-dock-segment-form">
+                      <label class="field">
+                        <span>Start</span>
+                        <input id="motionSegmentStart" type="number" min="0" value="0" />
+                      </label>
+                      <label class="field">
+                        <span>End</span>
+                        <input id="motionSegmentEnd" type="number" min="0" value="30" />
+                      </label>
+                      <label class="field">
+                        <span>Label</span>
+                        <input id="motionSegmentLabel" type="text" placeholder="left_wave" />
+                      </label>
+                      <label class="field">
+                        <span>Type</span>
+                        <input id="motionSegmentMotionType" type="text" placeholder="gesture" />
+                      </label>
+                      <label class="field field--wide">
+                        <span>Word prompt</span>
+                        <input id="motionSegmentWordPrompt" type="text" placeholder="wave hello with left hand" />
+                      </label>
+                      <button type="submit" class="btn btn--small">Create segment</button>
+                    </form>
+                    <div id="motionSegmentList" class="motion-dock-list motion-dock-list--nested"></div>
+                  </div>
+                </div>
+                <footer class="motion-dock-footer">
+                  <span class="export-meta">Last export: <span id="lastExportTime">never</span></span>
+                  <button id="exportPoseBtn" type="button" class="btn btn--small">Export JSON</button>
+                </footer>
               </article>
             </section>
           </section>

@@ -27,7 +27,7 @@ npm audit --audit-level=low
 |------|-----|
 | Dev | http://127.0.0.1:5173/ |
 | **Local prod** | http://127.0.0.1:5180/ |
-| **Motion Library** | http://127.0.0.1:5180/motion.html (needs `npm run backend` or `npm run start:full`) |
+| **Motion Library** | bottom-right panel on main page (needs `npm run backend` or `npm run start:full`) |
 
 Webcam needs localhost or HTTPS and is opt-in via **Start Camera**. If camera is denied,
 use the media file picker with a video or image.
@@ -43,13 +43,13 @@ use the media file picker with a video or image.
   [`RIG_VARIANTS_PLAYBOOK.md`](RIG_VARIANTS_PLAYBOOK.md) — a complete step-by-step recipe.**
 - `src/rigHost.js` — mounts hero Mushy viewer and forwards tracking; holds the `RIG_VARIANTS` registry (variants lazy-load via dynamic `import()`).
 - `scripts/check-rig-registry.mjs` — CI check that registry keys, rig dropdown, and module files stay in sync (`npm run check:rig-registry`).
-- `backend/` — Motion Library API (SQLite + Holistic batch processor + segment/matrix tagging). UI at `/motion.html`.
+- `backend/` — Motion Library API (SQLite + Holistic batch processor + segment/matrix tagging). UI in the main page lower-right dock.
 - `src/poseSkeleton.js` — shared `mapPoseLandmark`, framing constants.
 - `src/skeletonGraph.js` — pose connections, feet, neck bridge for 2D panes.
 - `src/jointLabels.js` — shared joint label text + facing helpers.
 - `src/handAssignment.js` — shared nearest-wrist hand L/R resolver (app + Motion backend).
 - `src/faceRig.js` — face landmark rig solver for Mushy head.
-- Motion Library: `motion.html`, `src/motion.js`, `backend/` — import/process/tag segments (`npm run backend`, `/motion.html`).
+- Motion Library: `src/motion.js`, `src/motion.css`, `backend/` — import/process/tag segments in the lower-right dock (`npm run backend`).
 - `public/mediapipe/` — vendored MediaPipe Holistic runtime.
 - `HANDOFF.md`, `TODO.md` — handoff context and open work.
 
