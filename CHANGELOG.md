@@ -9,6 +9,11 @@
   off-screen and loops. Monocular capture, so face/arms/hands track well and
   legs/depth are approximate. Bundled a default VRM (`public/vrm/default.vrm`) so
   there's a model to drive out of the box.
+- **VRM Editor: motion record / replay / export / load** — record the driven
+  bone rotations + expressions while capturing, then replay the performance on a
+  loop (independent of the source), **export** it to a `vrm-motion` JSON file, or
+  **load** a saved one back. Replay interpolates the recorded quaternions in the
+  render loop.
 
 ## Unreleased — Site review fixes
 
