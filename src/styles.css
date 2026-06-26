@@ -189,7 +189,7 @@ input[type="file"] {
 }
 
 select,
-button,
+button:not(.tool-card),
 input[type="file"] {
   height: 32px;
   border: 1px solid var(--border);
