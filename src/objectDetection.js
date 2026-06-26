@@ -4,7 +4,13 @@
  */
 
 const API_BASE = "http://127.0.0.1:5190";
-const SAMPLE_INTERVAL_MS = 500;
+// Minimum gap between frames. The detect loop self-paces by elapsed time, so
+// this is a floor, not a fixed rate — real throughput is bounded by inference
+// + round-trip. 100ms allows up to ~10fps when the backend keeps up.
+const SAMPLE_INTERVAL_MS = 100;
+// Cap the long edge of frames sent to the API. YOLO resizes to 640 internally,
+// so sending larger frames just wastes JPEG-encode, network, and disk I/O.
+const MAX_FRAME_EDGE = 640;
 
 // --- Color per class (hash class name → HSL hue) ---
 function classHue(className) {
@@ -69,9 +75,14 @@ function drawDetections(canvas, detections, videoEl) {
 
 // --- Capture a frame from a video element to an offscreen canvas ---
 function captureFrame(videoEl) {
+  const vw = videoEl.videoWidth || 640;
+  const vh = videoEl.videoHeight || 480;
+  // Downscale to MAX_FRAME_EDGE on the long side, preserving aspect ratio.
+  // Boxes are normalized, so rendering is unaffected by the capture size.
+  const scale = Math.min(1, MAX_FRAME_EDGE / Math.max(vw, vh));
   const c = document.createElement("canvas");
-  c.width = videoEl.videoWidth || 640;
-  c.height = videoEl.videoHeight || 480;
+  c.width = Math.round(vw * scale);
+  c.height = Math.round(vh * scale);
   c.getContext("2d").drawImage(videoEl, 0, 0, c.width, c.height);
   return c;
 }

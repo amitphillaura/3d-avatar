@@ -3,6 +3,10 @@ dist/
 data/
 backend/.venv/
 backend/models/
+# YOLO weights auto-downloaded by ultralytics to cwd on first detection
+yolov8n.pt
+*.pt
+__pycache__/
 .DS_Store
 logs/
 public/sample.mp4

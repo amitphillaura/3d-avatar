@@ -12,10 +12,33 @@ Protocol (one JSON object per line):
   Response: {"detections": [...]}  or  {"error": "...", "detections": []}
 """
 
+import os
 import sys
 import json
 
 _model = None
+_device = None
+
+# Model weights: yolov8s ("small") gives noticeably better accuracy than the
+# nano default at negligible cost on GPU. Override with DETECT_MODEL=yolov8n.pt
+# (faster) or yolov8m.pt (more accurate).
+MODEL_NAME = os.environ.get("DETECT_MODEL", "yolov8s.pt")
+
+def get_device():
+    """Prefer Apple GPU (MPS) / CUDA over CPU for a large inference speedup."""
+    global _device
+    if _device is not None:
+        return _device
+    _device = "cpu"
+    try:
+        import torch
+        if torch.backends.mps.is_available():
+            _device = "mps"
+        elif torch.cuda.is_available():
+            _device = "cuda"
+    except Exception:
+        pass
+    return _device
 
 def get_model():
     global _model
@@ -23,7 +46,7 @@ def get_model():
         return _model
     try:
         from ultralytics import YOLO
-        _model = YOLO("yolov8n.pt")
+        _model = YOLO(MODEL_NAME)
         return _model
     except ImportError:
         return None
@@ -34,7 +57,7 @@ def run_detection(image_path, confidence=0.4):
         return {"error": "ultralytics not installed", "detections": []}
 
     try:
-        results = model(image_path, conf=confidence, verbose=False)
+        results = model(image_path, conf=confidence, device=get_device(), verbose=False)
     except Exception as e:
         sys.stderr.write(f"Detection error: {e}\n")
         return {"error": str(e), "detections": []}
@@ -66,9 +89,18 @@ def run_detection(image_path, confidence=0.4):
 
 def main():
     # Warm the model on startup so the first request doesn't pay the load cost.
-    if get_model() is None:
+    model = get_model()
+    if model is None:
         sys.stdout.write(json.dumps({"error": "ultralytics not installed", "detections": []}) + "\n")
         sys.stdout.flush()
+    else:
+        # Run one throwaway inference so the GPU (MPS/CUDA) graph is compiled
+        # before the first real frame arrives.
+        try:
+            import numpy as np
+            model(np.zeros((640, 640, 3), dtype="uint8"), device=get_device(), verbose=False)
+        except Exception:
+            pass
 
     # Read requests line-by-line (persistent worker loop).
     for line in sys.stdin:

@@ -4,6 +4,8 @@ import multipart from "@fastify/multipart";
 import { recoverStaleProcessing } from "./lib/processor.js";
 import { registerSegmentRoutes, registerVideoRoutes } from "./routes/index.js";
 import { registerFileRoutes } from "./routes/files.js";
+import { registerDetectionRoutes } from "./routes/detection.js";
+import { registerAnimalRoutes } from "./routes/animal.js";
 import { ensureDataDirs } from "./lib/paths.js";
 import { getDb } from "./db/index.js";
 
@@ -26,6 +28,8 @@ await app.register(multipart, {
 registerVideoRoutes(app);
 registerSegmentRoutes(app);
 registerFileRoutes(app);
+registerDetectionRoutes(app);
+registerAnimalRoutes(app);
 
 try {
   await app.listen({ port: PORT, host: HOST });

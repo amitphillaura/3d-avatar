@@ -7,8 +7,15 @@ import { getDb } from "../db/index.js";
 import { videoDir, DATA_ROOT } from "../lib/paths.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const BACKEND_DIR = join(__dirname, "..");
 const DETECT_PY = join(__dirname, "../worker/detect.py");
 const TMP_DIR = join(DATA_ROOT, "detect_tmp");
+
+// Prefer the project venv (created by `npm run backend:setup`), which has
+// ultralytics installed; fall back to system python3. Mirrors lib/processor.js.
+const PYTHON_BIN = existsSync(join(BACKEND_DIR, ".venv/bin/python3"))
+  ? join(BACKEND_DIR, ".venv/bin/python3")
+  : (process.env.DETECT_PYTHON || "python3");
 
 function ensureTmpDir() {
   if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
@@ -23,7 +30,7 @@ const _pending = []; // { resolve, reject, timer }
 
 function getWorker() {
   if (_worker && !_worker.killed) return _worker;
-  _worker = spawn("python3", [DETECT_PY], { stdio: ["pipe", "pipe", "pipe"] });
+  _worker = spawn(PYTHON_BIN, [DETECT_PY], { stdio: ["pipe", "pipe", "pipe"] });
   _workerBuf = "";
   _worker.stdout.on("data", (chunk) => {
     _workerBuf += chunk.toString();
@@ -105,7 +112,7 @@ export function registerDetectionRoutes(app) {
         tmpPath = saveBase64Image(body.imageBase64);
       }
 
-      const result = runDetect(tmpPath, confidence);
+      const result = await runDetect(tmpPath, confidence);
       return result;
     } catch (err) {
       request.log.error(err);
@@ -130,7 +137,7 @@ export function registerDetectionRoutes(app) {
     }
 
     try {
-      const result = runDetect(framePath, Number(confidence));
+      const result = await runDetect(framePath, Number(confidence));
       return result;
     } catch (err) {
       request.log.error(err);
@@ -184,7 +191,7 @@ export function registerDetectionRoutes(app) {
     for (const fname of sampled) {
       const framePath = join(framesDir, fname);
       try {
-        const result = runDetect(framePath, CONFIDENCE_THRESHOLD);
+        const result = await runDetect(framePath, CONFIDENCE_THRESHOLD);
         if (result.detections) {
           for (const d of result.detections) {
             if (d.confidence >= CONFIDENCE_THRESHOLD) {
