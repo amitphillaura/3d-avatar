@@ -188,6 +188,14 @@ export function registerVideoRoutes(app) {
     return { video_id: video.id, frame };
   });
 
+  app.get("/api/videos/:id/tags", async (request, reply) => {
+    const db = getDb();
+    const video = db.prepare("SELECT id FROM videos WHERE id = ?").get(request.params.id);
+    if (!video) return reply.code(404).send({ error: "Video not found" });
+    const tags = db.prepare("SELECT * FROM video_tags WHERE video_id = ? ORDER BY id DESC").all(video.id);
+    return { tags };
+  });
+
   app.post("/api/videos/:id/tags", async (request, reply) => {
     const db = getDb();
     const video = db.prepare("SELECT id FROM videos WHERE id = ?").get(request.params.id);

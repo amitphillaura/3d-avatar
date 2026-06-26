@@ -1,2 +1,6 @@
 mediapipe>=0.10.14
 opencv-python-headless>=4.10.0.84
+ultralytics>=8.0
+# mmpose requires PyTorch — install separately: pip install torch torchvision
+# then: pip install mmpose>=1.1.0 mmcv>=2.0.0
+# mmpose>=1.1.0

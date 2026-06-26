@@ -276,3 +276,37 @@
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.14);
 }
+
+/* Tags panel */
+.motion-dock-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.motion-dock-tags-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.motion-dock-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.motion-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(120, 200, 255, 0.12);
+  color: #a8d8ff;
+  font-size: 9px;
+  font-weight: 600;
+}

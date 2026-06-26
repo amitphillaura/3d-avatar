@@ -84,6 +84,10 @@ def process_video(video_path: str, output_path: str, target_fps: float) -> dict:
     written = 0
     next_sample = 0.0
     source_index = 0
+    last_progress = -1
+
+    # Estimate total output frames for progress reporting
+    expected_frames = max(1, int(frame_count / step)) if step > 0 else 1
 
     with open(output_path, "w", encoding="utf-8") as handle:
         while True:
@@ -130,7 +134,15 @@ def process_video(video_path: str, output_path: str, target_fps: float) -> dict:
                 written += 1
                 next_sample += step
 
+                # Emit progress every 1% change
+                pct = min(99, int(written * 100 / expected_frames))
+                if pct != last_progress:
+                    print(f"PROGRESS:{pct}", flush=True)
+                    last_progress = pct
+
             source_index += 1
+
+    print("PROGRESS:100", flush=True)
 
     capture.release()
     holistic.close()
