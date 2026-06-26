@@ -432,6 +432,14 @@
   pointer-events: auto;
 }
 
+/* These elements set display:flex, which overrides the [hidden] attribute's
+   UA display:none — so toggling .hidden alone wouldn't hide them. Without this,
+   the drop-zone overlay and the "Loading…" pill stay visible after a model loads. */
+.vrm-drop-zone[hidden],
+.vrm-capture-status[hidden] {
+  display: none;
+}
+
 .vrm-drop-zone-icon {
   font-size: 56px;
   opacity: 0.3;
