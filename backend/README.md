@@ -38,7 +38,7 @@ data/
 
 | Layer | Field | Source |
 |-------|-------|--------|
-| L0 | `raw` | MediaPipe Tasks (pose/face/hands) |
+| L0 | `raw` | MediaPipe Holistic Tasks (`holistic_landmarker.task`) |
 | L1 | `skeleton_2d` | `backend/lib/skeleton2d.js` |
 | L2 | `rig` | `src/poseSkeleton.js` via `backend/lib/rig3d.js` |
 | L3 | segment `matrix` | root-relative joint trajectories + search vector |
@@ -50,6 +50,7 @@ data/
 | GET | `/api/health` | Health check |
 | GET | `/api/videos` | List videos |
 | POST | `/api/videos` | Upload (`multipart`: `file`, `rig_variant`, `tracking_mode`) |
+| DELETE | `/api/videos/:id` | Delete video, segments, and on-disk assets |
 | GET | `/api/videos/:id` | Video detail + tags + segments |
 | POST | `/api/videos/:id/process` | Start Holistic batch job |
 | GET | `/api/videos/:id/frames?from=&to=` | Processed frame bundle |

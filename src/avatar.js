@@ -723,9 +723,16 @@ export class MushyAvatar {
     if (!bodyTracking && faceTracking && !handTracking) {
       this.root.rotation.y = 0;
       this.root.position.y = -0.15;
-      this.torso.position.lerp(new THREE.Vector3(0, -0.25, -0.65), Math.min(delta * 5, 1));
-      this.torso.visible = true;
-      this.torso.scale.set(0.72, 0.95, 0.3);
+      this.torso.visible = false;
+      this.bones.forEach(({ mesh }) => {
+        mesh.visible = false;
+      });
+      this.joints.forEach((joint) => {
+        joint.visible = false;
+      });
+      Object.values(this.caps).forEach((cap) => {
+        cap.visible = false;
+      });
       return;
     }
 

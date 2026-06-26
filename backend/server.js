@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
-import { registerSegmentRoutes, registerVideoRoutes } from "./routes/index.js";
+import { registerSegmentRoutes, registerVideoRoutes, recoverStaleProcessing } from "./routes/index.js";
 import { ensureDataDirs } from "./lib/paths.js";
 import { getDb } from "./db/index.js";
 
@@ -9,7 +9,8 @@ const PORT = Number(process.env.MOTION_API_PORT || 5190);
 const HOST = process.env.MOTION_API_HOST || "127.0.0.1";
 
 ensureDataDirs();
-getDb();
+const db = getDb();
+recoverStaleProcessing(db);
 
 const app = Fastify({ logger: true, bodyLimit: 1024 * 1024 * 512 });
 

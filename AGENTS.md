@@ -47,8 +47,9 @@ use the media file picker with a video or image.
 - `src/poseSkeleton.js` — shared `mapPoseLandmark`, framing constants.
 - `src/skeletonGraph.js` — pose connections, feet, neck bridge for 2D panes.
 - `src/jointLabels.js` — shared joint label text + facing helpers.
+- `src/handAssignment.js` — shared nearest-wrist hand L/R resolver (app + Motion backend).
 - `src/faceRig.js` — face landmark rig solver for Mushy head.
-- `index.html` — sidebar + primary row (Raw, Full Skeleton, Mushy Rig) + anatomical diagnostics.
+- Motion Library: `motion.html`, `src/motion.js`, `backend/` — import/process/tag segments (`npm run backend`, `/motion.html`).
 - `public/mediapipe/` — vendored MediaPipe Holistic runtime.
 - `HANDOFF.md`, `TODO.md` — handoff context and open work.
 

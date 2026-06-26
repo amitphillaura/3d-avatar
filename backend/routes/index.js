@@ -1,4 +1,4 @@
-import { createReadStream, readFileSync } from "node:fs";
+import { createReadStream, readFileSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { getDb } from "../db/index.js";
@@ -9,6 +9,10 @@ import {
   ensureVideoDir
 } from "../lib/paths.js";
 import {
+  deleteVideoAssets,
+  invalidateVideoDerivatives,
+  MAX_EXPORT_FRAMES,
+  MAX_FRAME_RANGE,
   processVideoJob,
   readFrameByIndex,
   readProcessedFrames,
@@ -34,6 +38,30 @@ function readJsonFile(path) {
   } catch {
     return null;
   }
+}
+
+function clampFrameRange(video, fromRaw, toRaw) {
+  const maxIndex = Math.max(0, (video.frame_count || 1) - 1);
+  const from = Math.max(0, Math.min(maxIndex, Number(fromRaw ?? 0)));
+  const to = Math.max(from, Math.min(maxIndex, Number(toRaw ?? maxIndex)));
+  if (!Number.isFinite(from) || !Number.isFinite(to)) {
+    return { error: "Invalid frame range" };
+  }
+  if (to - from + 1 > MAX_FRAME_RANGE) {
+    return { error: `Frame range too large (max ${MAX_FRAME_RANGE})` };
+  }
+  return { from, to };
+}
+
+export function recoverStaleProcessing(db) {
+  const stuck = db.prepare("SELECT id FROM videos WHERE status = 'processing'").all();
+  if (!stuck.length) return;
+  db.prepare(`
+    UPDATE videos
+    SET status = 'uploaded', error_message = 'Processing interrupted (server restart)'
+    WHERE status = 'processing'
+  `).run();
+  console.log(`Recovered ${stuck.length} video(s) stuck in processing`);
 }
 
 export function registerVideoRoutes(app) {
@@ -73,6 +101,7 @@ export function registerVideoRoutes(app) {
     const db = getDb();
     const existing = db.prepare("SELECT id FROM videos WHERE sha256 = ?").get(sha256);
     if (existing) {
+      rmSync(videoDir(videoId), { recursive: true, force: true });
       return reply.code(409).send({ error: "Video already imported", video_id: existing.id });
     }
 
@@ -82,6 +111,19 @@ export function registerVideoRoutes(app) {
     `).run(videoId, file.filename, sha256, sourcePath, rigVariant, trackingMode);
 
     return reply.code(201).send({ video_id: videoId, filename: file.filename, status: "uploaded" });
+  });
+
+  app.delete("/api/videos/:id", async (request, reply) => {
+    const db = getDb();
+    const video = db.prepare("SELECT * FROM videos WHERE id = ?").get(request.params.id);
+    if (!video) return reply.code(404).send({ error: "Video not found" });
+    if (processing.has(video.id)) {
+      return reply.code(409).send({ error: "Video is processing" });
+    }
+
+    db.prepare("DELETE FROM videos WHERE id = ?").run(video.id);
+    deleteVideoAssets(video.id);
+    return reply.code(204).send();
   });
 
   app.post("/api/videos/:id/process", async (request, reply) => {
@@ -118,10 +160,11 @@ export function registerVideoRoutes(app) {
     if (!video) return reply.code(404).send({ error: "Video not found" });
     if (video.status !== "ready") return reply.code(409).send({ error: "Video not processed yet" });
 
-    const from = Number(request.query.from ?? 0);
-    const to = Number(request.query.to ?? video.frame_count - 1);
-    const frames = await readProcessedFrames(video.id, { from, to });
-    return { video_id: video.id, from, to, frames };
+    const range = clampFrameRange(video, request.query.from, request.query.to);
+    if (range.error) return reply.code(400).send({ error: range.error });
+
+    const frames = await readProcessedFrames(video.id, { from: range.from, to: range.to });
+    return { video_id: video.id, from: range.from, to: range.to, frames };
   });
 
   app.get("/api/videos/:id/frames/:index", async (request, reply) => {
@@ -131,7 +174,7 @@ export function registerVideoRoutes(app) {
     if (video.status !== "ready") return reply.code(409).send({ error: "Video not processed yet" });
 
     const frameIndex = Number(request.params.index);
-    const frame = readFrameByIndex(video.id, frameIndex);
+    const frame = await readFrameByIndex(video.id, frameIndex);
     if (!frame) return reply.code(404).send({ error: "Frame not found" });
     return { video_id: video.id, frame };
   });
@@ -266,6 +309,11 @@ export function registerSegmentRoutes(app) {
       return reply.code(409).send({ error: "Video not ready" });
     }
 
+    const span = segment.end_frame - segment.start_frame + 1;
+    if (span > MAX_EXPORT_FRAMES) {
+      return reply.code(400).send({ error: `Segment too large (max ${MAX_EXPORT_FRAMES} frames)` });
+    }
+
     const frames = await readProcessedFrames(video.id, {
       from: segment.start_frame,
       to: segment.end_frame
@@ -277,6 +325,10 @@ export function registerSegmentRoutes(app) {
       wordPrompt: segment.word_prompt,
       label: segment.label
     });
+
+    if (!matrix.frame_count) {
+      return reply.code(400).send({ error: "Matrix has no valid body frames" });
+    }
 
     ensureVideoDir(video.id);
     writeFileSync(matrixPath(video.id, segment.id), JSON.stringify(matrix, null, 2));
@@ -311,6 +363,11 @@ export function registerSegmentRoutes(app) {
     if (!segment) return reply.code(404).send({ error: "Segment not found" });
 
     const video = db.prepare("SELECT * FROM videos WHERE id = ?").get(segment.video_id);
+    const span = segment.end_frame - segment.start_frame + 1;
+    if (span > MAX_EXPORT_FRAMES) {
+      return reply.code(400).send({ error: `Segment too large (max ${MAX_EXPORT_FRAMES} frames)` });
+    }
+
     const frames = await readProcessedFrames(video.id, {
       from: segment.start_frame,
       to: segment.end_frame

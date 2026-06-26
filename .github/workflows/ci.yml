@@ -18,5 +18,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check:rig-registry
+      - run: npm run check:motion-api
       - run: npm run build
       - run: npm audit --audit-level=low

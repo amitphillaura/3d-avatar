@@ -13,6 +13,14 @@ const searchResultsEl = document.getElementById("searchResults");
 
 let selectedVideoId = null;
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 async function api(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, options);
   const contentType = response.headers.get("content-type") || "";
@@ -20,13 +28,14 @@ async function api(path, options = {}) {
   if (!response.ok) {
     throw new Error(payload?.error || `Request failed (${response.status})`);
   }
+  if (response.status === 204) return null;
   return payload;
 }
 
 function statusPill(status) {
   const cls =
     status === "ready" ? "motion-pill motion-pill--ok" : status === "failed" ? "motion-pill motion-pill--warn" : "motion-pill";
-  return `<span class="${cls}">${status}</span>`;
+  return `<span class="${cls}">${escapeHtml(status)}</span>`;
 }
 
 function renderVideos(videos) {
@@ -41,18 +50,21 @@ function renderVideos(videos) {
       <div class="motion-item">
         <div class="motion-item-head">
           <div>
-            <strong>${video.filename}</strong>
-            <div class="motion-subtitle">${video.frame_count || 0} frames · ${video.rig_variant}</div>
+            <strong>${escapeHtml(video.filename)}</strong>
+            <div class="motion-subtitle">${video.frame_count || 0} frames · ${escapeHtml(video.rig_variant)}</div>
           </div>
           ${statusPill(video.status)}
         </div>
         <div class="motion-item-actions">
-          <button type="button" class="btn" data-action="open" data-id="${video.id}">Open</button>
-          <button type="button" class="btn" data-action="process" data-id="${video.id}" ${video.status === "processing" ? "disabled" : ""}>
+          <button type="button" class="btn" data-action="open" data-id="${escapeHtml(video.id)}">Open</button>
+          <button type="button" class="btn" data-action="process" data-id="${escapeHtml(video.id)}" ${video.status === "processing" ? "disabled" : ""}>
             ${video.status === "ready" ? "Reprocess" : "Process"}
           </button>
+          <button type="button" class="btn btn--ghost" data-action="delete" data-id="${escapeHtml(video.id)}" ${video.status === "processing" ? "disabled" : ""}>
+            Delete
+          </button>
         </div>
-        ${video.error_message ? `<p class="motion-subtitle">${video.error_message}</p>` : ""}
+        ${video.error_message ? `<p class="motion-subtitle">${escapeHtml(video.error_message)}</p>` : ""}
       </div>`
     )
     .join("");
@@ -60,7 +72,7 @@ function renderVideos(videos) {
 
 function renderTags(tags) {
   tagListEl.innerHTML = tags
-    .map((tag) => `<li class="motion-pill">${tag.tag_type}: ${tag.tag_value}</li>`)
+    .map((tag) => `<li class="motion-pill">${escapeHtml(tag.tag_type)}: ${escapeHtml(tag.tag_value)}</li>`)
     .join("");
 }
 
@@ -76,15 +88,15 @@ function renderSegments(segments) {
       <div class="motion-item">
         <div class="motion-item-head">
           <div>
-            <strong>${segment.label || "Untitled segment"}</strong>
+            <strong>${escapeHtml(segment.label || "Untitled segment")}</strong>
             <div class="motion-subtitle">frames ${segment.start_frame}–${segment.end_frame}</div>
-            <div class="motion-subtitle">${segment.word_prompt || "No word prompt"}</div>
+            <div class="motion-subtitle">${escapeHtml(segment.word_prompt || "No word prompt")}</div>
           </div>
-          <span class="motion-pill">${segment.matrix_status}</span>
+          <span class="motion-pill">${escapeHtml(segment.matrix_status)}</span>
         </div>
         <div class="motion-item-actions">
-          <button type="button" class="btn" data-segment-action="matrix" data-id="${segment.id}">Build matrix</button>
-          <button type="button" class="btn btn--ghost" data-segment-action="export" data-id="${segment.id}">Export JSON</button>
+          <button type="button" class="btn" data-segment-action="matrix" data-id="${escapeHtml(segment.id)}">Build matrix</button>
+          <button type="button" class="btn btn--ghost" data-segment-action="export" data-id="${escapeHtml(segment.id)}">Export JSON</button>
         </div>
       </div>`
     )
@@ -109,9 +121,9 @@ async function openVideo(videoId) {
   detailTitleEl.textContent = detail.video.filename;
   detailMetaEl.innerHTML = [
     statusPill(detail.video.status),
-    `<span class="motion-pill">${detail.video.rig_variant}</span>`,
+    `<span class="motion-pill">${escapeHtml(detail.video.rig_variant)}</span>`,
     `<span class="motion-pill">${detail.video.frame_count || 0} frames</span>`,
-    `<span class="motion-pill">${detail.video.tracking_mode}</span>`
+    `<span class="motion-pill">${escapeHtml(detail.video.tracking_mode)}</span>`
   ].join("");
   detailVideoEl.src = `/api/videos/${videoId}/source`;
   document.getElementById("segmentEnd").value = Math.max(30, (detail.video.frame_count || 30) - 1);
@@ -166,6 +178,16 @@ videoListEl.addEventListener("click", async (event) => {
       await api(`/api/videos/${videoId}/process`, { method: "POST" });
       await refreshVideos();
       if (selectedVideoId === videoId) await openVideo(videoId);
+      return;
+    }
+    if (button.dataset.action === "delete") {
+      if (!window.confirm("Delete this video and all segments?")) return;
+      await api(`/api/videos/${videoId}`, { method: "DELETE" });
+      if (selectedVideoId === videoId) {
+        detailPanelEl.hidden = true;
+        selectedVideoId = null;
+      }
+      await refreshVideos();
     }
   } catch (error) {
     window.alert(error.message);
@@ -263,8 +285,8 @@ document.getElementById("searchForm").addEventListener("submit", async (event) =
           .map(
             ({ segment, score }) => `
             <div class="motion-item">
-              <strong>${segment.word_prompt || segment.label || "Untitled"}</strong>
-              <div class="motion-subtitle">${segment.filename || segment.video_id} · score ${score.toFixed(2)}</div>
+              <strong>${escapeHtml(segment.word_prompt || segment.label || "Untitled")}</strong>
+              <div class="motion-subtitle">${escapeHtml(segment.filename || segment.video_id)} · score ${score.toFixed(2)}</div>
             </div>`
           )
           .join("")

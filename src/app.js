@@ -13,8 +13,9 @@ import {
   POSE_FOOT_JOINTS,
   shoulderMidFromPose
 } from "./skeletonGraph.js";
+import { assignAnatomicalHands } from "./handAssignment.js";
 
-const videoElement = document.createElement("video");
+let currentVideoFile = null;
 videoElement.setAttribute("playsinline", "");
 videoElement.preload = "metadata";
 
@@ -151,6 +152,7 @@ const lastExportTimeEl = document.getElementById("lastExportTime");
 const modelsLoadedIndicatorEl = document.getElementById("modelsLoadedIndicator");
 const modelsLoadedTextEl = document.getElementById("modelsLoadedText");
 const mediaLibraryEl = document.getElementById("mediaLibrary");
+const sendToMotionLibraryBtn = document.getElementById("sendToMotionLibrary");
 
 let latestResults = null;
 let cameraInstance = null;
@@ -1456,24 +1458,14 @@ function getFrameDimensions(source) {
   };
 }
 
-// Assign each hand stream to the person's left/right using pose wrist proximity
-// (same rule as MushyAvatar.updateHands).
+// Assign each hand stream to the person's left/right using pose wrist proximity.
 function getAnatomicalHands() {
   if (!latestResults) return { left: null, right: null };
-  let left = latestResults.leftHandLandmarks;
-  let right = latestResults.rightHandLandmarks;
-  const pose = latestResults.poseLandmarks;
-  const lw = pose?.[15];
-  const rw = pose?.[16];
-  if (lw && rw && left?.[0] && right?.[0]) {
-    const sq = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
-    if (sq(left[0], rw) + sq(right[0], lw) < sq(left[0], lw) + sq(right[0], rw)) {
-      const tmp = left;
-      left = right;
-      right = tmp;
-    }
-  }
-  return { left, right };
+  return assignAnatomicalHands(
+    latestResults.poseLandmarks,
+    latestResults.leftHandLandmarks,
+    latestResults.rightHandLandmarks
+  );
 }
 
 async function processCurrentFrame() {
@@ -1554,6 +1546,41 @@ function clearVideoObjectUrl() {
   if (!videoObjectUrl) return;
   URL.revokeObjectURL(videoObjectUrl);
   videoObjectUrl = null;
+  currentVideoFile = null;
+  syncMotionLibraryButton();
+}
+
+function syncMotionLibraryButton() {
+  if (sendToMotionLibraryBtn) {
+    sendToMotionLibraryBtn.disabled = !currentVideoFile;
+  }
+}
+
+async function sendVideoToMotionLibrary() {
+  if (!currentVideoFile) {
+    setStatus("Load a local video file first.", "warning");
+    return;
+  }
+
+  const body = new FormData();
+  body.append("file", currentVideoFile);
+  body.append("rig_variant", rigVariantSelect?.value || "mushy");
+  body.append("tracking_mode", modeSelect?.value || "both");
+
+  try {
+    setStatus("Uploading to Motion Library…", "warning");
+    const response = await fetch("/api/videos", { method: "POST", body });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || `Upload failed (${response.status})`);
+    }
+    setStatus(
+      `Uploaded to Motion Library. Open Motion Library to process (${payload.video_id}).`,
+      "success"
+    );
+  } catch (error) {
+    setStatus(`Motion Library upload failed: ${error.message}`, "danger");
+  }
 }
 
 function clearImageObjectUrl() {
@@ -1774,6 +1801,7 @@ function loadVideoFile(file) {
 
   clearVideoObjectUrl();
 
+  currentVideoFile = file;
   videoObjectUrl = URL.createObjectURL(file);
   applyVideoSound();
   videoElement.loop = Boolean(loopVideoToggle?.checked);
@@ -1787,6 +1815,7 @@ function loadVideoFile(file) {
   setStatus(`Loading video: ${file.name}`, "warning");
   syncSourceUI();
   refreshRawPanel();
+  syncMotionLibraryButton();
 }
 
 function loadImageFile(file) {
@@ -1906,6 +1935,9 @@ function bindEvents() {
   });
   restartVideoButton.addEventListener("click", restartLoadedVideo);
   snapshotButton.addEventListener("click", downloadSnapshot);
+  sendToMotionLibraryBtn?.addEventListener("click", () => {
+    sendVideoToMotionLibrary();
+  });
   restartCameraButton?.addEventListener("click", restartCamera);
   exportPoseBtn?.addEventListener("click", copyKeypointsJSON);
   retryButton.addEventListener("click", () => {

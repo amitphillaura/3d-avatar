@@ -592,7 +592,7 @@ export class MushyMagma {
   }
 
   updateHands(leftHandLandmarks, rightHandLandmarks) {
-    // MediaPipe (and the "Swap Hands (L/R)" toggle) can mislabel which set is the left vs
+    // MediaPipe can mislabel which set is the left vs
     // right hand. Anchoring an arm to a mislabeled hand drags the whole forearm across the
     // body — the crossed-arms bug. Re-assign each hand set to the pose wrist it is
     // physically closest to so the rig is correct regardless of the label. Pose and hand

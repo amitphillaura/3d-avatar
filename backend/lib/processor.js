@@ -1,13 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, createWriteStream, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, unlinkSync, rmSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { extname, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSkeleton2d } from "./skeleton2d.js";
 import { buildRig3d } from "./rig3d.js";
+import { assignAnatomicalHands } from "../../src/handAssignment.js";
 import {
   ensureVideoDir,
+  matrixPath,
   processedLandmarksPath,
   rawLandmarksPath,
   PROJECT_ROOT,
@@ -22,6 +24,8 @@ const PYTHON_BIN = existsSync(join(BACKEND_DIR, ".venv/bin/python3"))
   : "python3";
 export const PIPELINE_VERSION = "poseSkeleton@v1";
 export const TARGET_FPS = 30;
+export const MAX_FRAME_RANGE = 300;
+export const MAX_EXPORT_FRAMES = 500;
 
 export function sha256File(path) {
   return new Promise((resolvePromise, reject) => {
@@ -58,27 +62,46 @@ function detectionState(raw) {
 }
 
 export function enrichRawFrame(raw, { rigVariant, width, height }) {
-  const skeleton = buildSkeleton2d(raw, { width, height });
-  const rig = buildRig3d(raw, { variant: rigVariant, pipelineVersion: PIPELINE_VERSION });
+  const { left, right } = assignAnatomicalHands(raw.pose, raw.left_hand, raw.right_hand);
+  const normalized = {
+    ...raw,
+    left_hand: left,
+    right_hand: right
+  };
+  const skeleton = buildSkeleton2d(normalized, { width, height });
+  const rig = buildRig3d(normalized, { variant: rigVariant, pipelineVersion: PIPELINE_VERSION });
   return {
     frame_index: raw.frame_index,
     timestamp_ms: raw.timestamp_ms,
     raw: {
       pose: raw.pose,
       face: raw.face,
-      left_hand: raw.left_hand,
-      right_hand: raw.right_hand
+      left_hand: left,
+      right_hand: right
     },
     skeleton_2d: skeleton,
     rig,
     detection: {
-      state: detectionState(raw),
+      state: detectionState(normalized),
       has_body: hasBody(raw.pose),
       has_face: hasFace(raw.face),
-      has_left_hand: hasHand(raw.left_hand),
-      has_right_hand: hasHand(raw.right_hand)
+      has_left_hand: hasHand(left),
+      has_right_hand: hasHand(right)
     }
   };
+}
+
+export function invalidateVideoDerivatives(db, videoId) {
+  const segments = db.prepare("SELECT id FROM segments WHERE video_id = ?").all(videoId);
+  for (const segment of segments) {
+    const path = matrixPath(videoId, segment.id);
+    if (existsSync(path)) unlinkSync(path);
+  }
+  db.prepare(`
+    UPDATE segments
+    SET matrix_status = 'none', updated_at = datetime('now')
+    WHERE video_id = ?
+  `).run(videoId);
 }
 
 async function runPythonProcessor(videoPath, outputPath, fps = TARGET_FPS) {
@@ -128,6 +151,7 @@ export async function processVideoJob({
   const rawPath = rawLandmarksPath(videoId);
   const processedPath = processedLandmarksPath(videoId);
 
+  invalidateVideoDerivatives(db, videoId);
   db.prepare("UPDATE videos SET status = ?, error_message = NULL WHERE id = ?").run("processing", videoId);
 
   try {
@@ -248,12 +272,40 @@ export function newVideoId() {
 }
 
 export function readFrameByIndex(videoId, frameIndex) {
-  const path = processedLandmarksPath(videoId);
-  const lines = readFileSync(path, "utf8").split("\n");
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const frame = JSON.parse(line);
-    if (frame.frame_index === frameIndex) return frame;
-  }
-  return null;
+  return new Promise((resolvePromise, reject) => {
+    const path = processedLandmarksPath(videoId);
+    if (!existsSync(path)) {
+      resolvePromise(null);
+      return;
+    }
+
+    let resolved = false;
+    const rl = createInterface({
+      input: createReadStream(path, { encoding: "utf8" }),
+      crlfDelay: Infinity
+    });
+
+    rl.on("line", (line) => {
+      if (!line.trim()) return;
+      const frame = JSON.parse(line);
+      if (frame.frame_index === frameIndex) {
+        resolved = true;
+        rl.close();
+        resolvePromise(frame);
+      } else if (frame.frame_index > frameIndex) {
+        resolved = true;
+        rl.close();
+        resolvePromise(null);
+      }
+    });
+    rl.on("close", () => {
+      if (!resolved) resolvePromise(null);
+    });
+    rl.on("error", reject);
+  });
+}
+
+export function deleteVideoAssets(videoId) {
+  const dir = videoDir(videoId);
+  if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
 }

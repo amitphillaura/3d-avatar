@@ -20,17 +20,9 @@ except ImportError as exc:
 
 
 MODELS = {
-    "pose": (
-        "pose_landmarker_full.task",
-        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
-    ),
-    "face": (
-        "face_landmarker.task",
-        "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
-    ),
-    "hand": (
-        "hand_landmarker.task",
-        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
+    "holistic": (
+        "holistic_landmarker.task",
+        "https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task",
     ),
 }
 
@@ -81,25 +73,10 @@ def process_video(video_path: str, output_path: str, target_fps: float) -> dict:
     BaseOptions = base_options_module.BaseOptions
     running_mode = vision.RunningMode.IMAGE
 
-    pose = vision.PoseLandmarker.create_from_options(
-        vision.PoseLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=str(ensure_model("pose"))),
+    holistic = vision.HolisticLandmarker.create_from_options(
+        vision.HolisticLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(ensure_model("holistic"))),
             running_mode=running_mode,
-            num_poses=1,
-        )
-    )
-    face = vision.FaceLandmarker.create_from_options(
-        vision.FaceLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=str(ensure_model("face"))),
-            running_mode=running_mode,
-            num_faces=1,
-        )
-    )
-    hands = vision.HandLandmarker.create_from_options(
-        vision.HandLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=str(ensure_model("hand"))),
-            running_mode=running_mode,
-            num_hands=2,
         )
     )
 
@@ -118,31 +95,26 @@ def process_video(video_path: str, output_path: str, target_fps: float) -> dict:
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
-                pose_result = pose.detect(mp_image)
-                face_result = face.detect(mp_image)
-                hand_result = hands.detect(mp_image)
+                result = holistic.detect(mp_image)
 
-                pose_landmarks = None
-                if pose_result.pose_landmarks:
-                    pose_landmarks = list_to_dicts(pose_result.pose_landmarks[0])
-
-                face_landmarks = None
-                if face_result.face_landmarks:
-                    face_landmarks = list_to_dicts(face_result.face_landmarks[0], include_visibility=False)
-
-                left_hand = right_hand = None
-                if hand_result.hand_landmarks:
-                    for idx, landmarks in enumerate(hand_result.hand_landmarks):
-                        label = (
-                            hand_result.handedness[idx][0].category_name.lower()
-                            if hand_result.handedness
-                            else ""
-                        )
-                        mapped = list_to_dicts(landmarks)
-                        if label == "left":
-                            left_hand = mapped
-                        elif label == "right":
-                            right_hand = mapped
+                pose_landmarks = (
+                    list_to_dicts(result.pose_landmarks) if result.pose_landmarks else None
+                )
+                face_landmarks = (
+                    list_to_dicts(result.face_landmarks, include_visibility=False)
+                    if result.face_landmarks
+                    else None
+                )
+                left_hand = (
+                    list_to_dicts(result.left_hand_landmarks)
+                    if result.left_hand_landmarks
+                    else None
+                )
+                right_hand = (
+                    list_to_dicts(result.right_hand_landmarks)
+                    if result.right_hand_landmarks
+                    else None
+                )
 
                 timestamp_ms = (source_index / native_fps) * 1000.0 if native_fps else 0.0
                 payload = {
@@ -161,9 +133,7 @@ def process_video(video_path: str, output_path: str, target_fps: float) -> dict:
             source_index += 1
 
     capture.release()
-    pose.close()
-    face.close()
-    hands.close()
+    holistic.close()
 
     return {
         "width": width,
