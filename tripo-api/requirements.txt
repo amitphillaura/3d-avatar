@@ -1,0 +1,8 @@
+# FastAPI service deps. Torch + TripoSR's own deps are installed by setup.sh
+# (torch must land before TripoSR's requirements so torchmcubes compiles
+# against it). Keep this list to the web layer only.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+pillow>=10.0
+numpy>=1.24

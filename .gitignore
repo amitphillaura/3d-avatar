@@ -3,6 +3,12 @@ dist/
 data/
 backend/.venv/
 backend/models/
+
+# TripoSR internal asset-gen service: venv, cloned upstream repo, scratch outputs
+tripo-api/.venv/
+tripo-api/vendor/
+tripo-api/outputs/
+
 # YOLO weights auto-downloaded by ultralytics to cwd on first detection
 yolov8n.pt
 *.pt
