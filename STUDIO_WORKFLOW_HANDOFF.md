@@ -49,8 +49,9 @@ library. The Bowtie chat consumer is downstream and not built here.
 ### Tab ② — Media Lab (the saved collection)
 - Browse everything in the database
 - Replay any motion on any character
-- **Label it** (tags / description / motion type / search prompt) — manual now,
-  vision-LLM-assisted later
+- **Label it** (tags / description / motion type / search prompt) — manual,
+  plus **object-detection auto-tagging** (detected objects → searchable tags)
+  and vision-LLM assistance later
 - Build motion matrices, inspect, manage, delete
 - Everything here has already been through Intake
 
@@ -151,12 +152,30 @@ restructure.
 - Mostly refining `src/motion.js` into the tab.
 - **Goal:** a clip can be fully labeled and replayed in well under a minute.
 
-### Phase 5 (later) — Vision-LLM auto-labeler (stub now)
-- A Media-Lab action: sample N frames → image-to-text model → **proposed** tags
-  the user accepts/edits. Build as an isolated, optional step. Just leave the
-  seam for it now.
+### Phase 5 — Object-detection auto-tagging (real feature, build & test)
+- Run an object detector over saved clips and **store what it finds as
+  searchable tags** — so motions are findable by scene contents ("holding a
+  cup," "near a chair," "ball"), not just by body motion.
+- **Use the detector's built-in classes out of the box** — the standard
+  pre-trained set (e.g. COCO's ~80 everyday objects: person, cup, chair, bottle,
+  ball, dog, etc.). No custom training. Whatever the model gives, we use.
+- Detector: **YOLO / Ultralytics** (fast, trivial to run) or **MMDetection**
+  (pairs with the animal work later). Either ships the COCO classes.
+- Flow: sample frames across the clip → detect → collect class labels above a
+  confidence threshold → dedupe → write as `tags` (source = `object-detector`).
+- **Test it:** run on a handful of real clips, eyeball that the detected objects
+  match the footage, and confirm the tags become searchable in the library.
+- Don't run every frame — **sample** (e.g. a few frames/second); objects don't
+  move that fast and per-frame is wasteful.
 
-*(Later phase, separate handoff: dog + quadruped capture — MMPose/AP-10K. See
+### Phase 6 — Vision-LLM auto-labeler (richer, builds on Phase 5)
+- A Media-Lab action: sample N frames → image-to-text model → **proposed**
+  description/tags the user accepts/edits.
+- Complements Phase 5: object detection answers *"what objects are present"*
+  cheaply; the LLM answers *"what's happening"* richly. They stack — keep both.
+
+*(Later phase, separate handoff: dog + quadruped capture, which reuses the same
+detector as its required first stage — MMDetection/YOLO → MMPose. See
 `ANIMAL_MOCAP_HANDOFF.md`.)*
 
 ---
@@ -174,6 +193,9 @@ restructure.
 - `POST /api/videos/import-by-path` — validate + move + enqueue
 - `GET /api/queue` — job status feed
 - Allowed-root config (default Downloads) in `backend/lib/paths.js`
+- Object-detection worker (Phase 5) — YOLO/MMDetection over sampled frames →
+  COCO-class tags written via the existing tag insert
+- `POST /api/videos/:id/detect-objects` (or fold into a Media-Lab tag action)
 
 **Modify**
 - `backend/worker/process_video.py` — emit progress (`frames_done/total`)

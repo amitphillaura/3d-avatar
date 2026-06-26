@@ -80,7 +80,24 @@ z-axis tuned softer (`0.7 / 0.006`). Reuse as-is for animals.
 
 ## 3. Tool Choice (decided)
 
-**Pose estimation: MMPose (OpenMMLab) with its animal configs.**
+**Two-stage, top-down: object detector → animal pose.**
+
+```
+video frame → object detector ("dog" + bounding box) → crop → MMPose (pose in box)
+```
+
+This is not optional. AP-10K pose models are **top-down**: they don't find the
+animal — you hand them a bounding box and they estimate the pose inside it. That
+box comes from an **object detector** running first. (Same mechanism lets you
+handle multiple subjects later: detect each, crop, pose each crop.)
+
+**Stage 1 — Object detector (bounding box):**
+- **MMDetection** (same OpenMMLab family as MMPose — cleanest pairing) or
+  **YOLO / Ultralytics** (lighter, fast). Either gives "dog + box" per frame.
+- Don't run it every frame for live use — detect periodically, track between.
+  For batch/video processing, per-frame is fine.
+
+**Stage 2 — Pose estimation: MMPose with its animal configs.**
 
 Rationale vs. the alternatives:
 - **MMPose** — has *pre-trained* animal models (AP-10K dataset, ~17 keypoints
@@ -134,12 +151,17 @@ index conventions occasionally differ between configs.)
 Prove the full path on a single image/short clip before polishing.
 
 1. **Backend extractor** — new `backend/worker/process_video_animal.py`:
-   - Run MMPose AP-10K model over frames.
-   - Emit JSON per frame in the **same normalized 0–1 schema** the existing
-     `process_video.py` produces, but with the 17 animal keypoints.
+   - **Stage 1:** run the object detector (MMDetection or YOLO) per frame → get
+     the animal's bounding box. If no animal is detected, mark the frame empty.
+   - **Stage 2:** crop to the box and run MMPose AP-10K → 17 keypoints.
+   - Convert keypoints back to **full-frame** normalized 0–1 coords (remember to
+     un-crop: map box-relative pixels back into the whole image) and emit JSON
+     per frame in the **same schema** the existing `process_video.py` produces.
    - Keep the output filename/format compatible with `processor.js` so the
      existing pipeline ingests it. (May need a `kind: "animal"` flag on the
      record.)
+   - Tip: prove Stage 2 alone on a tight dog photo first (skip detection by
+     using the whole image as the box), then add Stage 1 in front of it.
 2. **Animal mapping** — add `mapAnimalLandmark()` to `src/poseSkeleton.js`
    (start by reusing the human constants; tune the multipliers once you see it).
 3. **Dog topology** — new module (e.g. `src/dogSkeleton.js`) with the 17
@@ -189,6 +211,12 @@ Prove the full path on a single image/short clip before polishing.
 
 ## 7. Gotchas
 
+- **Top-down needs a box.** AP-10K won't run without a detector first — Stage 1
+  (detection) is a hard dependency, not an enhancement. No box → no pose.
+- **Un-crop carefully.** Pose keypoints come out **relative to the crop**. You
+  must transform them back to full-frame 0–1 coords before emitting, or the dog
+  will be offset/scaled wrong. This is the most common silent bug in top-down
+  pipelines.
 - **Don't break the humans.** 32 existing characters depend on
   `mapPoseLandmark` and the 33-landmark schema. Add alongside; don't mutate the
   human path.
