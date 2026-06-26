@@ -11,6 +11,8 @@ const SAMPLE_INTERVAL_MS = 100;
 // Cap the long edge of frames sent to the API. YOLO resizes to 640 internally,
 // so sending larger frames just wastes JPEG-encode, network, and disk I/O.
 const MAX_FRAME_EDGE = 640;
+// When the backend is unreachable, retry this slowly instead of every frame.
+const OFFLINE_RETRY_MS = 2000;
 
 // --- Color per class (hash class name → HSL hue) ---
 function classHue(className) {
@@ -36,6 +38,21 @@ async function detectFrame(canvas, confidence = 0.4) {
   });
   if (!resp.ok) throw new Error(`API ${resp.status}`);
   return resp.json();
+}
+
+// When the backend isn't running, fetch() rejects with a TypeError rather than
+// an HTTP status. Detect that so we can show an actionable message and back off
+// instead of hammering a dead port ~10×/s.
+function isBackendOffline(err) {
+  return err instanceof TypeError ||
+    /Failed to fetch|NetworkError|Load failed/i.test(err?.message || "");
+}
+
+function describeDetectError(err) {
+  if (isBackendOffline(err)) {
+    return "Detection backend offline — start it on :5190 (npm run backend).";
+  }
+  return `Error: ${err.message}`;
 }
 
 // --- Draw detections on a canvas overlay ---
@@ -149,6 +166,7 @@ function makeCameraMode({ videoId, canvasId, startBtnId, stopBtnId, confidenceId
   async function scheduleDetect() {
     if (!running) return;
     const start = Date.now();
+    let offline = false;
     try {
       if (videoEl.readyState >= 2) {
         const frame = captureFrame(videoEl);
@@ -160,10 +178,11 @@ function makeCameraMode({ videoId, canvasId, startBtnId, stopBtnId, confidenceId
         }
       }
     } catch (err) {
-      statusEl.textContent = `Error: ${err.message}`;
+      statusEl.textContent = describeDetectError(err);
+      offline = isBackendOffline(err);
     }
     const elapsed = Date.now() - start;
-    const delay = Math.max(0, SAMPLE_INTERVAL_MS - elapsed);
+    const delay = offline ? OFFLINE_RETRY_MS : Math.max(0, SAMPLE_INTERVAL_MS - elapsed);
     if (running) timer = setTimeout(scheduleDetect, delay);
   }
 }
@@ -234,13 +253,14 @@ function makeVideoMode() {
         statusEl.textContent = `${result.detections.length} object(s) detected`;
       }
     } catch (err) {
-      statusEl.textContent = `Error: ${err.message}`;
+      statusEl.textContent = describeDetectError(err);
     }
   }
 
   async function scheduleDetect() {
     if (!active) return;
     const start = Date.now();
+    let offline = false;
     try {
       if (videoEl.readyState >= 2) {
         const frame = captureFrame(videoEl);
@@ -252,10 +272,11 @@ function makeVideoMode() {
         }
       }
     } catch (err) {
-      statusEl.textContent = `Error: ${err.message}`;
+      statusEl.textContent = describeDetectError(err);
+      offline = isBackendOffline(err);
     }
     const elapsed = Date.now() - start;
-    const delay = Math.max(0, SAMPLE_INTERVAL_MS - elapsed);
+    const delay = offline ? OFFLINE_RETRY_MS : Math.max(0, SAMPLE_INTERVAL_MS - elapsed);
     if (active) timer = setTimeout(scheduleDetect, delay);
   }
 }

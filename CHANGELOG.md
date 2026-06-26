@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — Site review fixes
+
+### Fixed
+- **VRM Editor "Load Default VRM" showed a cryptic error.** No default model is
+  bundled, so `/vrm/default.vrm` returned the SPA's `index.html` and the loader
+  threw `Unexpected token '<'`. `loadVrmFromUrl` now fetches and validates the
+  bytes first (detects an HTML response) and shows a clear message: *"No model
+  found there. Drag a .vrm file onto the viewport, or use Load File."*
+- **Object Detection gave no clear signal when the backend was down.** A fetch
+  failure now reads *"Detection backend offline — start it on :5190"* across
+  live/video/multi modes, and the detect loops back off to 2s while offline
+  instead of hammering the dead port ~10×/s.
+- **Console deprecation warnings from the 3D viewport.** Replaced the deprecated
+  `THREE.Clock` with a manual `performance.now()` frame delta, and
+  `THREE.PCFSoftShadowMap` with `THREE.PCFShadowMap`.
+
+### Changed
+- **Media Lab** (Motion Capture) is an unimplemented placeholder — the tab now
+  carries a "soon" badge and the panel reads "Coming soon …" instead of being
+  presented as a finished feature.
+
 ## Unreleased — Object detection working & fast
 
 ### Fixed (Object Detection tool)

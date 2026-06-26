@@ -20,7 +20,7 @@ let renderer = null;
 let scene = null;
 let camera = null;
 let controls = null;
-let clock = null;
+let lastFrameTime = 0;
 let rafId = null;
 let springEnabled = true;
 let captureActive = false;
@@ -61,7 +61,7 @@ function setupThree(viewportEl) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
@@ -104,17 +104,20 @@ function setupThree(viewportEl) {
   controls.minDistance = 0.5;
   controls.maxDistance = 8;
   controls.update();
-
-  clock = new THREE.Clock();
 }
 
 // ─── Render Loop ──────────────────────────────────────────────────────────────
 
 function startRenderLoop() {
   if (rafId) return;
+  lastFrameTime = 0;
   function loop() {
     rafId = requestAnimationFrame(loop);
-    const delta = clock.getDelta();
+    // Manual frame delta (seconds). Avoids THREE.Clock, which is deprecated in
+    // recent three.js and logs a console warning on construction.
+    const now = performance.now();
+    const delta = lastFrameTime ? (now - lastFrameTime) / 1000 : 0;
+    lastFrameTime = now;
     controls?.update();
     if (vrm) {
       vrm.update(delta);
@@ -144,14 +147,35 @@ function handleResize() {
 
 // ─── VRM Loading ──────────────────────────────────────────────────────────────
 
+// First non-whitespace byte is '<' → an HTML document (e.g. an SPA fallback
+// page served when the requested model file doesn't exist). VRM files start
+// with the GLB magic ('glTF') or a JSON '{', never '<'.
+function looksLikeHtml(buffer) {
+  const bytes = new Uint8Array(buffer.slice(0, 64));
+  let i = 0;
+  // Skip whitespace and a UTF-8 BOM.
+  while (i < bytes.length && [0x20, 0x09, 0x0a, 0x0d, 0xef, 0xbb, 0xbf].includes(bytes[i])) i++;
+  return bytes[i] === 0x3c;
+}
+
 async function loadVrmFromUrl(url, filename) {
   showLoadingState(true);
   try {
+    // Fetch the bytes ourselves so we can give a clear error. If we handed a bad
+    // URL straight to GLTFLoader, a missing file (server returns index.html) would
+    // surface as a cryptic "Unexpected token '<'" JSON parse error.
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Couldn't load model (HTTP ${resp.status}).`);
+    const buffer = await resp.arrayBuffer();
+    if (looksLikeHtml(buffer)) {
+      throw new Error('No model found there. Drag a .vrm file onto the viewport, or use Load File.');
+    }
+
     const loader = new GLTFLoader();
     loader.register(parser => new VRMLoaderPlugin(parser));
-    const gltf = await loader.loadAsync(url);
+    const gltf = await loader.parseAsync(buffer, '');
     const newVrm = gltf.userData.vrm;
-    if (!newVrm) throw new Error('Not a valid VRM file (no VRM data found)');
+    if (!newVrm) throw new Error('That file isn\'t a valid VRM model.');
 
     // Dispose old VRM geometry / materials
     if (vrm) {
@@ -179,7 +203,7 @@ async function loadVrmFromUrl(url, filename) {
   } catch (err) {
     console.error('[VRM Editor] load error:', err);
     showLoadingState(false);
-    showError('Failed to load VRM: ' + err.message);
+    showError(err.message);
   }
 }
 
