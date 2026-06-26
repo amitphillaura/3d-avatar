@@ -44,6 +44,9 @@ export function initMotionLibrary(options = {}) {
   const searchResultsEl = document.getElementById("motionSearchResults");
   const processBtn = document.getElementById("motionProcessVideo");
   const deleteBtn = document.getElementById("motionDeleteVideo");
+  const autoTagBtn = document.getElementById("motionAutoTagVideo");
+  const tagsPanel = document.getElementById("motionTagsPanel");
+  const tagsList = document.getElementById("motionTagsList");
 
   if (!videoListEl) return null;
 
@@ -97,6 +100,18 @@ export function initMotionLibrary(options = {}) {
       .join("");
   }
 
+  function renderTags(tags) {
+    if (!tagsPanel || !tagsList) return;
+    if (!tags || !tags.length) {
+      tagsPanel.hidden = true;
+      return;
+    }
+    tagsPanel.hidden = false;
+    tagsList.innerHTML = tags
+      .map(t => `<span class="motion-tag">${escapeHtml(t.tag_value)}</span>`)
+      .join("");
+  }
+
   function syncDetailActions(video) {
     if (!processBtn || !deleteBtn) return;
     const processing = video?.status === "processing";
@@ -134,6 +149,7 @@ export function initMotionLibrary(options = {}) {
     const endInput = document.getElementById("motionSegmentEnd");
     if (endInput) endInput.value = Math.max(30, (detail.video.frame_count || 30) - 1);
     syncDetailActions(detail.video);
+    renderTags(detail.tags);
     renderSegments(detail.segments);
     await refreshVideos();
     return detail;
@@ -265,6 +281,32 @@ export function initMotionLibrary(options = {}) {
       onStatus(error.message, "danger");
     }
   });
+
+  if (autoTagBtn) {
+    autoTagBtn.addEventListener("click", async () => {
+      if (!selectedVideoId) return;
+      autoTagBtn.disabled = true;
+      autoTagBtn.textContent = "Tagging...";
+      try {
+        const result = await api("/api/detect/auto-tag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ videoId: selectedVideoId }),
+        });
+        autoTagBtn.textContent = `Tagged (${result.tagsAdded?.length || 0})`;
+        // Refresh to show new tags
+        await openVideo(selectedVideoId);
+      } catch (err) {
+        autoTagBtn.textContent = "Error";
+        console.error("Auto-tag failed:", err);
+      } finally {
+        setTimeout(() => {
+          autoTagBtn.disabled = false;
+          autoTagBtn.textContent = "Auto-tag";
+        }, 3000);
+      }
+    });
+  }
 
   document.getElementById("motionSegmentForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();

@@ -451,6 +451,11 @@
                     <div class="motion-dock-detail-actions">
                       <button id="motionProcessVideo" type="button" class="btn btn--small">Process</button>
                       <button id="motionDeleteVideo" type="button" class="btn btn--small btn--ghost">Delete</button>
+                      <button id="motionAutoTagVideo" type="button" class="btn btn--small">Auto-tag</button>
+                    </div>
+                    <div id="motionTagsPanel" class="motion-dock-tags" hidden>
+                      <span class="motion-dock-tags-label">Tags:</span>
+                      <div id="motionTagsList" class="motion-dock-tags-list"></div>
                     </div>
                     <form id="motionSegmentForm" class="motion-dock-segment-form">
                       <label class="field">
@@ -575,6 +580,20 @@
     <button id="openObjectDetection" type="button" class="detection-launcher"
       title="Open Object Detection Tool" aria-label="Open Object Detection Tool">
       &#128269;
+    </button>
+
+    <!-- Queue sidebar -->
+    <aside id="queue-sidebar" class="queue-sidebar" aria-label="Processing queue">
+      <header class="queue-sidebar-header">
+        <span class="queue-sidebar-title">Queue</span>
+        <button id="queue-sidebar-close" type="button" class="queue-sidebar-close" aria-label="Close queue">&#x2715;</button>
+      </header>
+      <div id="queue-list" class="queue-list">
+        <p class="queue-empty">Queue is empty</p>
+      </div>
+    </aside>
+    <button id="queue-sidebar-toggle" type="button" class="queue-sidebar-toggle" title="Processing queue" aria-label="Toggle processing queue">
+      &#9776; Queue
     </button>
   </body>
 </html>
