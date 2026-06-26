@@ -901,23 +901,27 @@
       import { initStudio } from '/src/studio.js';
       import { initVrmEditor } from '/src/vrmEditor.js';
 
-      initRouter();
-      initStudio();
-      initVrmEditor();
+      const wire = (id, handler) =>
+        document.getElementById(id)?.addEventListener('click', handler);
+
+      // Wire navigation FIRST and isolate each tool init. Previously a throw inside
+      // initStudio()/initVrmEditor() (e.g. a WebGL/VRM failure on some machines) ran
+      // before the click handlers were attached, which left every card and back button
+      // unclickable. Navigation must never depend on a tool's init succeeding.
+      try { initRouter(); } catch (err) { console.error('[router] init failed', err); }
 
       // Home card routing
-      document.getElementById('card-motion-capture')
-        ?.addEventListener('click', () => navigate('motion-capture'));
-      document.getElementById('card-object-detection')
-        ?.addEventListener('click', () => navigate('object-detection'));
-      document.getElementById('card-vrm-editor')
-        ?.addEventListener('click', () => navigate('vrm-editor'));
+      wire('card-motion-capture', () => navigate('motion-capture'));
+      wire('card-object-detection', () => navigate('object-detection'));
+      wire('card-vrm-editor', () => navigate('vrm-editor'));
 
       // Back buttons
-      document.getElementById('mc-back-btn')
-        ?.addEventListener('click', () => navigate('home'));
-      document.getElementById('od-back-btn')
-        ?.addEventListener('click', () => navigate('home'));
+      wire('mc-back-btn', () => navigate('home'));
+      wire('od-back-btn', () => navigate('home'));
+      wire('vrm-back-btn', () => navigate('home'));
+
+      try { initStudio(); } catch (err) { console.error('[studio] init failed', err); }
+      try { initVrmEditor(); } catch (err) { console.error('[vrmEditor] init failed', err); }
 
       // Queue sidebar live polling
       const queueList = document.getElementById('queue-sidebar-list');
