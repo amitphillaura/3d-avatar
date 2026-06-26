@@ -127,12 +127,13 @@
   background: rgba(89, 166, 255, 0.1);
 }
 
-/* VRM Editor — purple, coming soon */
+/* VRM Editor — purple */
 .tool-card--vrm {
   --card-accent: #a855f7;
-  opacity: 0.65;
-  cursor: default;
-  pointer-events: none;
+}
+.tool-card--vrm:hover {
+  border-color: #a855f7;
+  box-shadow: 0 0 28px rgba(168, 85, 247, 0.22), 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 .tool-card--vrm .tool-card-icon {
   color: #a855f7;
