@@ -1472,3 +1472,184 @@ a.btn {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   Object Detection Tool
+   ============================================================ */
+
+/* Full-screen overlay view */
+.detection-view {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.detection-view[hidden] {
+  display: none;
+}
+
+.detection-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.detection-back {
+  font-size: 14px;
+  padding: 4px 10px;
+}
+
+.detection-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text);
+}
+
+/* Tabs */
+.detection-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 16px 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.detection-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px 8px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.detection-tab:hover {
+  color: var(--text);
+}
+
+.detection-tab--active {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Panels */
+.detection-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 12px 16px;
+  gap: 12px;
+}
+
+.detection-panel[hidden] {
+  display: none;
+}
+
+/* Video + canvas overlay container */
+.detection-canvas-wrap {
+  position: relative;
+  flex: 1;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.detection-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.detection-box-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Controls row */
+.detection-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.detection-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.detection-field input[type="range"] {
+  width: 100px;
+  accent-color: var(--accent);
+}
+
+.detection-status {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.detection-multi-note {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.detection-file-label {
+  cursor: pointer;
+}
+
+/* Floating launcher button */
+.detection-launcher {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 900;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  box-shadow: var(--shadow);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.detection-launcher:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.detection-launcher[hidden] {
+  display: none;
+}
