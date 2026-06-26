@@ -132,3 +132,19 @@ export function shoulderTwistYaw(get, has) {
   _a.subVectors(get("rightShoulder"), get("leftShoulder"));
   return Math.atan2(_a.z, _a.x) - hipLineYaw(get, has);
 }
+
+/**
+ * Map an AP-10K animal landmark (normalised 0-1 coords) to Three.js world space.
+ * Uses a wider x-spread and lower y-offset than mapPoseLandmark to suit quadruped framing.
+ *
+ * @param {{ x: number, y: number, confidence?: number }} lm  Normalised landmark.
+ * @param {THREE.Vector3} [out]  Optional scratch vector.
+ * @returns {{ x: number, y: number, z: number }}
+ */
+export function mapAnimalLandmark(lm, out = new THREE.Vector3()) {
+  return out.set(
+    (0.5 - lm.x) * 4.3,
+    (0.4 - lm.y) * 3.5,   // slightly different y offset for quadruped
+    -0.65                  // flat (2D pose has no depth)
+  );
+}
