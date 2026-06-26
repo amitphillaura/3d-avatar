@@ -403,6 +403,12 @@ function newCaptureVideo() {
   v.autoplay = true;
   v.playsInline = true;
   v.muted = true;
+  // Attach in-viewport but invisible. A muted, video-only element that isn't
+  // visible gets power-paused by the browser ("video-only background media
+  // paused to save power"), which would stall a file-driven capture. Keeping it
+  // in the layout (geometry visible, opacity 0) avoids that.
+  v.style.cssText = 'position:fixed;right:0;bottom:0;width:8px;height:8px;opacity:0;pointer-events:none;z-index:-1';
+  document.body.appendChild(v);
   return v;
 }
 
@@ -451,7 +457,7 @@ async function startLiveCapture() {
     await captureVideo.play();
   } catch (e) {
     showError('Camera access denied: ' + e.message);
-    captureVideo = null;
+    cleanupCaptureVideo();
     return;
   }
   await beginCapture();
@@ -478,7 +484,10 @@ async function startVideoCapture(file) {
 }
 
 function cleanupCaptureVideo() {
-  if (captureVideo) { try { captureVideo.pause(); } catch (_) { /* ignore */ } }
+  if (captureVideo) {
+    try { captureVideo.pause(); } catch (_) { /* ignore */ }
+    captureVideo.remove();
+  }
   if (captureObjectUrl) { URL.revokeObjectURL(captureObjectUrl); captureObjectUrl = null; }
   captureVideo = null;
 }
