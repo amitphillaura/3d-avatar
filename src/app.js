@@ -34,10 +34,8 @@ const modeSelect = document.getElementById("mode");
 const visualStyleSelect = document.getElementById("visualStyle");
 const overlaySkeletonToggle = document.getElementById("overlaySkeleton");
 const trackFingersToggle = document.getElementById("trackFingers");
-const swapHandsToggle = document.getElementById("swapHands");
 const loopVideoToggle = document.getElementById("loopVideo");
 const videoSoundToggle = document.getElementById("videoSound");
-const SWAP_HANDS_STORAGE_KEY = "live-pose-swap-hands";
 const FULL_SKELETON_LABELS_KEY = "live-pose-full-skeleton-labels";
 const RIGGED_LABELS_KEY = "live-pose-rigged-labels";
 const RIG_VARIANT_KEY = "live-pose-rig-variant";
@@ -1269,10 +1267,7 @@ function drawFullSkeleton() {
   drawHandSet(ctx, project, leftHand, "#ff7bd5");
   drawHandSet(ctx, project, rightHand, "#59a6ff");
 
-  // Bridge each hand skeleton to its NEAREST pose wrist. Pairing by hardcoded index
-  // (pose[15]→leftHand) breaks when "Swap Hands (L/R)" swaps the landmark arrays: the
-  // hand roots move across the body while the wrists don't, stretching the bridge into a
-  // band across the torso. Nearest-wrist pairing is swap-invariant.
+  // Bridge each hand skeleton to its nearest pose wrist (label-invariant).
   bridgeHandToNearestWrist(ctx, project, pose, leftHand, "#ff7bd5");
   bridgeHandToNearestWrist(ctx, project, pose, rightHand, "#59a6ff");
 
@@ -1461,27 +1456,24 @@ function getFrameDimensions(source) {
   };
 }
 
-// MediaPipe Holistic often labels left/right hands swapped for front-facing recorded
-// video. Correcting it once here fixes the Left/Right panels AND the rigged model wrists
-// together (the rig anchors each hand to its pose wrist).
-function applyHandSwap() {
-  if (!swapHandsToggle?.checked || !latestResults) return;
-  const tmp = latestResults.leftHandLandmarks;
-  latestResults.leftHandLandmarks = latestResults.rightHandLandmarks;
-  latestResults.rightHandLandmarks = tmp;
-}
-
-// Person-relative left/right hand arrays for UI. When the toggle is off, MediaPipe still
-// labels from the camera POV — swap for display/export only. When on, applyHandSwap() has
-// already corrected latestResults so pass through unchanged.
+// Assign each hand stream to the person's left/right using pose wrist proximity
+// (same rule as MushyAvatar.updateHands).
 function getAnatomicalHands() {
   if (!latestResults) return { left: null, right: null };
-  const left = latestResults.leftHandLandmarks;
-  const right = latestResults.rightHandLandmarks;
-  if (swapHandsToggle?.checked) {
-    return { left, right };
+  let left = latestResults.leftHandLandmarks;
+  let right = latestResults.rightHandLandmarks;
+  const pose = latestResults.poseLandmarks;
+  const lw = pose?.[15];
+  const rw = pose?.[16];
+  if (lw && rw && left?.[0] && right?.[0]) {
+    const sq = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+    if (sq(left[0], rw) + sq(right[0], lw) < sq(left[0], lw) + sq(right[0], rw)) {
+      const tmp = left;
+      left = right;
+      right = tmp;
+    }
   }
-  return { left: right, right: left };
+  return { left, right };
 }
 
 async function processCurrentFrame() {
@@ -1494,7 +1486,6 @@ async function processCurrentFrame() {
   frameTick += 1;
   try {
     await holistic.send({ image: frameSource });
-    applyHandSwap();
     const { width, height } = getFrameDimensions(frameSource);
     if (width > 0 && height > 0) lastSourceAspect = width / height;
     rigHost?.updateTracking(latestResults, {
@@ -1982,16 +1973,6 @@ function bindEvents() {
     setStatus(`Rigged finger tracking: ${trackFingersToggle.checked ? "on" : "off"}.`);
   });
 
-  swapHandsToggle?.addEventListener("change", () => {
-    try {
-      localStorage.setItem(SWAP_HANDS_STORAGE_KEY, swapHandsToggle.checked ? "1" : "0");
-    } catch {
-      // ignore storage failures
-    }
-    setStatus(`Hands L/R: ${swapHandsToggle.checked ? "swapped" : "normal"}.`);
-    processCurrentFrame();
-  });
-
   fullSkeletonJointLabelsToggle?.addEventListener("change", () => {
     showFullSkeletonJointLabels = fullSkeletonJointLabelsToggle.checked;
     try {
@@ -2333,15 +2314,6 @@ function readStoredBool(key, defaultValue = true) {
 }
 
 function init() {
-  if (swapHandsToggle) {
-    try {
-      // Default OFF: getAnatomicalHands() corrects panel labels for front-facing video.
-      // Turn ON when MediaPipe hand labels need a source-level swap for the rig as well.
-      swapHandsToggle.checked = localStorage.getItem(SWAP_HANDS_STORAGE_KEY) === "1";
-    } catch {
-      swapHandsToggle.checked = false;
-    }
-  }
   if (fullSkeletonJointLabelsToggle) {
     fullSkeletonJointLabelsToggle.checked = readStoredBool(FULL_SKELETON_LABELS_KEY, true);
     showFullSkeletonJointLabels = fullSkeletonJointLabelsToggle.checked;

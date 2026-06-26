@@ -1,5 +1,8 @@
 node_modules/
 dist/
+data/
+backend/.venv/
+backend/models/
 .DS_Store
 logs/
 public/sample.mp4

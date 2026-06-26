@@ -251,6 +251,15 @@ input[type="file"]:focus-visible {
     background 140ms ease;
 }
 
+a.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  box-sizing: border-box;
+  min-height: 34px;
+}
+
 .btn:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: rgba(0, 240, 168, 0.65);

@@ -3,7 +3,8 @@
 Local-only pose/face tester: MediaPipe Holistic → 2D skeleton panes + procedural **Mushy Rig**
 (32 selectable character variants).
 
-**Prod URL:** http://127.0.0.1:5180/ (`npm run start` or `npm run autostart:install`)
+**Prod URL:** http://127.0.0.1:5180/ (`npm run start` or `npm run autostart:install`)  
+**Motion Library:** http://127.0.0.1:5180/motion.html (`npm run backend` + prod, or `npm run start:full`)
 
 ## What works
 

@@ -12,8 +12,11 @@ builds on push but does not deploy anywhere.
 ```bash
 cd "/Users/amit/Projects/3d Avatar"
 npm install
-npm run dev -- --port 5173          # development
+npm run backend:setup               # once: Python deps for Holistic processor
+npm run backend                     # Motion API on http://127.0.0.1:5190
+npm run dev -- --port 5173          # development (+ /api proxy)
 npm run start                       # manual: build + serve on :5180
+npm run start:full                  # build + backend + preview (Motion Library + prod UI)
 npm run autostart:install           # login autostart (macOS launchd)
 npm run build
 npm run check:rig-registry
@@ -24,6 +27,7 @@ npm audit --audit-level=low
 |------|-----|
 | Dev | http://127.0.0.1:5173/ |
 | **Local prod** | http://127.0.0.1:5180/ |
+| **Motion Library** | http://127.0.0.1:5180/motion.html (needs `npm run backend` or `npm run start:full`) |
 
 Webcam needs localhost or HTTPS and is opt-in via **Start Camera**. If camera is denied,
 use the media file picker with a video or image.
@@ -39,6 +43,7 @@ use the media file picker with a video or image.
   [`RIG_VARIANTS_PLAYBOOK.md`](RIG_VARIANTS_PLAYBOOK.md) — a complete step-by-step recipe.**
 - `src/rigHost.js` — mounts hero Mushy viewer and forwards tracking; holds the `RIG_VARIANTS` registry (variants lazy-load via dynamic `import()`).
 - `scripts/check-rig-registry.mjs` — CI check that registry keys, rig dropdown, and module files stay in sync (`npm run check:rig-registry`).
+- `backend/` — Motion Library API (SQLite + Holistic batch processor + segment/matrix tagging). UI at `/motion.html`.
 - `src/poseSkeleton.js` — shared `mapPoseLandmark`, framing constants.
 - `src/skeletonGraph.js` — pose connections, feet, neck bridge for 2D panes.
 - `src/jointLabels.js` — shared joint label text + facing helpers.
@@ -57,6 +62,7 @@ use the media file picker with a video or image.
 - **Pause holds the last pose** (stale tracking ≠ reset). Reset only on explicit `clearTracking()` /
   `resetDetection()` (source switch / stop).
 - Sidebar **Track Fingers** toggle (`trackFingers`) opts into per-finger driving on Mushy hands.
+- **Hand L/R** is resolved automatically via nearest-wrist pairing (no swap toggle).
 - Hero 3D letterboxes to `--viz-aspect`; the 3 primary viewers fill their grid cells.
 - **Rig variants lazy-load** — only the selected character chunk is fetched (~46 KB main bundle + per-variant chunk on demand).
 - Dev hooks: `window.__avatar`, `window.__rigHost`, `window.__loadVideoURL`,

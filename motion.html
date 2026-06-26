@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Motion Library | 3D Avatar</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="stylesheet" href="/src/motion.css" />
+  </head>
+  <body>
+    <main class="motion-shell">
+      <header class="motion-header">
+        <div>
+          <a class="motion-back" href="/">← Pose Tester</a>
+          <h1>Motion Library</h1>
+          <p class="motion-subtitle">
+            Import video → Holistic landmarks → Skeleton 2D → Mushy 3D → tagged motion segments → matrix.
+          </p>
+        </div>
+        <div class="motion-header-meta" id="apiStatus">Checking API…</div>
+      </header>
+
+      <section class="motion-grid">
+        <article class="motion-card">
+          <h2>Import Video</h2>
+          <form id="uploadForm" class="motion-form">
+            <label class="field">
+              <span>Video file</span>
+              <input id="videoFile" type="file" accept="video/*" required />
+            </label>
+            <label class="field">
+              <span>Rig variant</span>
+              <select id="rigVariant">
+                <option value="mushy">Mushy</option>
+                <option value="mushyKnight">MushyKnight</option>
+                <option value="mushyOcto">MushyOcto</option>
+                <option value="mushyPirate">MushyPirate</option>
+                <option value="mushySkeleton">MushySkeleton</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Tracking mode</span>
+              <select id="trackingMode">
+                <option value="both" selected>Face + Body</option>
+                <option value="body">Whole Body</option>
+                <option value="face">Face Only</option>
+              </select>
+            </label>
+            <button type="submit" class="btn">Upload</button>
+          </form>
+        </article>
+
+        <article class="motion-card">
+          <h2>Word Search</h2>
+          <form id="searchForm" class="motion-form motion-form--inline">
+            <input id="searchQuery" type="search" placeholder="wave hello, bow, dance…" />
+            <button type="submit" class="btn">Search</button>
+          </form>
+          <div id="searchResults" class="motion-list"></div>
+        </article>
+      </section>
+
+      <section class="motion-card">
+        <div class="motion-card-head">
+          <h2>Videos</h2>
+          <button id="refreshVideos" type="button" class="btn btn--ghost">Refresh</button>
+        </div>
+        <div id="videoList" class="motion-list"></div>
+      </section>
+
+      <section class="motion-card" id="detailPanel" hidden>
+        <div class="motion-card-head">
+          <h2 id="detailTitle">Video detail</h2>
+          <button id="closeDetail" type="button" class="btn btn--ghost">Close</button>
+        </div>
+        <div id="detailMeta" class="motion-meta"></div>
+
+        <div class="motion-detail-grid">
+          <article>
+            <h3>Preview</h3>
+            <video id="detailVideo" controls playsinline class="motion-video"></video>
+          </article>
+          <article>
+            <h3>Tag video</h3>
+            <form id="tagForm" class="motion-form">
+              <label class="field">
+                <span>Tag type</span>
+                <input id="tagType" type="text" value="action" required />
+              </label>
+              <label class="field">
+                <span>Tag value</span>
+                <input id="tagValue" type="text" placeholder="wave, practice_take_01" required />
+              </label>
+              <button type="submit" class="btn">Add tag</button>
+            </form>
+            <ul id="tagList" class="motion-tags"></ul>
+          </article>
+        </div>
+
+        <article class="motion-segment-editor">
+          <h3>Segment + motion tag</h3>
+          <form id="segmentForm" class="motion-form motion-form--grid">
+            <label class="field">
+              <span>Start frame</span>
+              <input id="segmentStart" type="number" min="0" value="0" />
+            </label>
+            <label class="field">
+              <span>End frame</span>
+              <input id="segmentEnd" type="number" min="0" value="30" />
+            </label>
+            <label class="field">
+              <span>Label</span>
+              <input id="segmentLabel" type="text" placeholder="left_wave" />
+            </label>
+            <label class="field">
+              <span>Motion type</span>
+              <input id="segmentMotionType" type="text" placeholder="gesture" />
+            </label>
+            <label class="field motion-field--wide">
+              <span>Word prompt</span>
+              <input id="segmentWordPrompt" type="text" placeholder="wave hello with left hand" />
+            </label>
+            <button type="submit" class="btn">Create segment</button>
+          </form>
+          <div id="segmentList" class="motion-list"></div>
+        </article>
+
+        <article>
+          <h3>Frame inspector</h3>
+          <form id="frameForm" class="motion-form motion-form--inline">
+            <input id="frameIndex" type="number" min="0" value="0" />
+            <button type="submit" class="btn">Load frame</button>
+          </form>
+          <pre id="framePreview" class="motion-pre">Pick a processed video and frame index.</pre>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/src/motion.js"></script>
+  </body>
+</html>
