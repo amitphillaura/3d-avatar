@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — VRM Editor real VRMA animations
+
+### Added
+- **VRM Editor: authored `.vrma` playback.** Added `@pixiv/three-vrm-animation` and a real
+  `THREE.AnimationMixer` path so animation buttons play authored motion clips instead of
+  hand-coded pose guesses.
+- **Floating animation panel.** The VRM viewport now has a bottom-left search panel with
+  preset motion buttons, **Import .VRMA**, and **Stop** controls.
+- **Local motion pack install.** Installed the official VRoid/BOOTH sample motions on this
+  machine under `public/vrma/vroid/` and wired buttons for Show full body, Greeting, Peace
+  sign, Shoot, Spin, Model pose, and Squat. The BOOTH binaries are local-only and ignored
+  for GitHub redistribution.
+
+### Fixed
+- **Bad "wave" pose.** Removed the procedural wave preset that twisted the avatar and
+  failed to move the hands correctly.
+- **Rig dropdown registry sync.** Added the missing VRM Avatar and Dog entries to the main
+  rig dropdown so the registry check is green again.
+
 ## Unreleased — Drive the VRM from a video
 
 ### Added

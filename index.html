@@ -336,6 +336,8 @@
                   <option value="mushyPlush">MushyPlush</option>
                   <option value="mushyPirate">MushyPirate</option>
                   <option value="mushySkeleton">MushySkeleton</option>
+                  <option value="vrmDefault">VRM Avatar</option>
+                  <option value="dog">Dog</option>
                 </select>
                 <label class="tile-header-toggle">
                   <input id="riggedJointLabels" type="checkbox" checked />
@@ -483,7 +485,7 @@
             </section>
 
             <section class="dock-row" aria-label="Motion library and export">
-              <article class="dock-card dock-card--motion" aria-label="Motion library">
+              <article id="motion-library-card" class="dock-card dock-card--motion" aria-label="Motion library">
                 <header class="dock-header motion-dock-header">
                   <h3>Motion Library</h3>
                   <span id="motionApiStatus" class="motion-api-status">Checking…</span>
@@ -693,6 +695,10 @@
         <!-- Spacer -->
         <div style="flex:1"></div>
 
+        <button id="vrm-open-motion-library" class="vrm-header-btn" type="button">
+          Motion Library
+        </button>
+
         <!-- Capture status in header -->
         <span id="vrm-capture-status" class="vrm-capture-status">
           <span class="vrm-capture-dot"></span>
@@ -869,6 +875,27 @@
             <div class="vrm-drop-zone-icon">&#129490;</div>
             <div class="vrm-drop-zone-title">Drop a VRM file here</div>
             <div class="vrm-drop-zone-sub">or use the File Management panel to load one</div>
+          </div>
+
+          <!-- Floating animation launcher -->
+          <div id="vrm-animation-panel" class="vrm-animation-float" aria-label="Animation presets">
+            <div class="vrm-animation-head">
+              <span>Animations</span>
+              <div class="vrm-animation-actions">
+                <button id="vrm-import-vrma-btn" class="vrm-animation-stop" type="button">Import .VRMA</button>
+                <button id="vrm-stop-animation-btn" class="vrm-animation-stop" type="button" disabled>Stop</button>
+              </div>
+            </div>
+            <input id="vrm-vrma-input" type="file" accept=".vrma" hidden aria-label="Import VRM animation file" />
+            <input
+              id="vrm-animation-search"
+              class="vrm-animation-search"
+              type="search"
+              placeholder="Search animations"
+              aria-label="Search animations"
+            />
+            <div id="vrm-animation-results" class="vrm-animation-results" aria-live="polite"></div>
+            <p id="vrm-animation-status" class="vrm-animation-status">No animation playing</p>
           </div>
 
           <!-- Bottom toolbar -->

@@ -11,6 +11,9 @@ __pycache__/
 logs/
 public/sample.mp4
 
+# Licensed BOOTH motion pack binaries are installed locally for :5180, but not redistributed.
+public/vrma/vroid/
+
 # Local user model drops (not part of the app anymore)
 public/models/body/*.glb
 public/models/face/*.glb

@@ -11,11 +11,13 @@
 - **Face-only rig** — head/neck from face landmarks without torso stub when body inactive.
 - **Motion replay** — segment export drives hero rig + 2D panes (`/?replay=`, Play in Rig, Load Motion JSON).
 - **Word search** — tags + phrase scoring + motion-shape heuristics (wave, bow, jump, dance, arm raise).
+- **VRM Editor authored animations** — floating `.vrma` animation panel, import button, and local official VRoid motion pack presets.
 
 ## Notes
 
 - User sample video (`public/sample.mp4`) is gitignored — not in repo.
 - MediaPipe assets live under `public/mediapipe/` (vendored, no CDN).
+- BOOTH VRMA motion binaries live locally under `public/vrma/vroid/` and are intentionally not committed.
 - Motion backend models download to `backend/models/` on first process run.
 - Segment frame ranges validated against `frame_count`; stale segments pruned after reprocess.
 - Failed/interrupted processing discards partial `processed.jsonl` + frame rows.

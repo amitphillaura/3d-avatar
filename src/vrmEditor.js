@@ -11,6 +11,11 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VRMLoaderPlugin, VRMHumanBoneName } from '@pixiv/three-vrm';
+import {
+  createVRMAnimationClip,
+  VRMAnimationLoaderPlugin,
+  VRMLookAtQuaternionProxy,
+} from '@pixiv/three-vrm-animation';
 import { navigate } from './router.js';
 
 // ─── Module-level state ───────────────────────────────────────────────────────
@@ -46,6 +51,63 @@ let playingRecording = false;
 let replayStartTime = 0;
 const _qa = new THREE.Quaternion();
 const _qb = new THREE.Quaternion();
+let vrmAnimationMixer = null;
+let vrmAnimationAction = null;
+let activeAnimationId = null;
+let activeAnimationBasePose = null;
+let activeAnimationBaseExpressions = null;
+let activeAnimationBaseLookAt = null;
+const vrmAnimationCache = new Map();
+const ANIMATION_PRESETS = [
+  {
+    id: 'pixiv-test',
+    label: 'Pixiv Test',
+    url: '/vrma/pixiv-test.vrma',
+    keywords: 'official pixiv sample vrma motion authored',
+  },
+  {
+    id: 'vroid-show-full-body',
+    label: 'Show full body',
+    url: '/vrma/vroid/show-full-body.vrma',
+    keywords: 'vroid official vrma full body',
+  },
+  {
+    id: 'vroid-greeting',
+    label: 'Greeting',
+    url: '/vrma/vroid/greeting.vrma',
+    keywords: 'vroid official vrma greeting hello wave',
+  },
+  {
+    id: 'vroid-peace-sign',
+    label: 'Peace sign',
+    url: '/vrma/vroid/peace-sign.vrma',
+    keywords: 'vroid official vrma peace sign pose',
+  },
+  {
+    id: 'vroid-shoot',
+    label: 'Shoot',
+    url: '/vrma/vroid/shoot.vrma',
+    keywords: 'vroid official vrma shoot action',
+  },
+  {
+    id: 'vroid-spin',
+    label: 'Spin',
+    url: '/vrma/vroid/spin.vrma',
+    keywords: 'vroid official vrma spin turn',
+  },
+  {
+    id: 'vroid-model-pose',
+    label: 'Model pose',
+    url: '/vrma/vroid/model-pose.vrma',
+    keywords: 'vroid official vrma model pose',
+  },
+  {
+    id: 'vroid-squat',
+    label: 'Squat',
+    url: '/vrma/vroid/squat.vrma',
+    keywords: 'vroid official vrma squat exercise',
+  },
+];
 
 // Kalidokit solvers — loaded once via dynamic import on first use
 let KFace = null;
@@ -136,6 +198,7 @@ function startRenderLoop() {
     const delta = lastFrameTime ? (now - lastFrameTime) / 1000 : 0;
     lastFrameTime = now;
     controls?.update();
+    if (vrmAnimationMixer) vrmAnimationMixer.update(delta);
     if (playingRecording) applyRecordedPose(now - replayStartTime);
     if (vrm) {
       vrm.update(delta);
@@ -178,6 +241,7 @@ function looksLikeHtml(buffer) {
 
 async function loadVrmFromUrl(url, filename) {
   showLoadingState(true);
+  stopActiveVrmAnimation();
   try {
     // Fetch the bytes ourselves so we can give a clear error. If we handed a bad
     // URL straight to GLTFLoader, a missing file (server returns index.html) would
@@ -327,6 +391,7 @@ function escapeHtml(str) {
 
 function resetTPose() {
   if (!vrm?.humanoid) return;
+  stopActiveVrmAnimation();
   Object.values(VRMHumanBoneName).forEach(boneName => {
     const node = vrm.humanoid.getRawBoneNode(boneName);
     if (node) {
@@ -433,6 +498,7 @@ function newCaptureVideo() {
 // whatever `captureVideo` is — a webcam stream or a playing video file — so the
 // same pipeline (Holistic → Kalidokit → VRM bones) drives both.
 async function beginCapture() {
+  stopActiveVrmAnimation();
   captureActive = true;
   updateCaptureStatusUI(true);
 
@@ -660,6 +726,7 @@ function startReplay() {
   if (!recordedFrames.length) { showError('Record a performance first.'); return; }
   if (!vrm) { showError('Load a VRM model first.'); return; }
   if (captureActive) stopLiveCapture();
+  stopActiveVrmAnimation();
   playingRecording = true;
   replayStartTime = performance.now();
   updateRecordUI();
@@ -732,6 +799,216 @@ async function loadMotion(file) {
   } catch (e) {
     showError('Could not load motion: ' + e.message);
   }
+}
+
+function attachLookAtProxy(targetVrm) {
+  if (!targetVrm?.lookAt || targetVrm.scene.getObjectByName('lookAtQuaternionProxy')) return;
+  const proxy = new VRMLookAtQuaternionProxy(targetVrm.lookAt);
+  proxy.name = 'lookAtQuaternionProxy';
+  targetVrm.scene.add(proxy);
+}
+
+function captureAnimationBaseState() {
+  activeAnimationBasePose = vrm?.humanoid?.getNormalizedPose?.() ?? null;
+  activeAnimationBaseExpressions = null;
+  if (vrm?.expressionManager) {
+    activeAnimationBaseExpressions = {};
+    Object.keys(vrm.expressionManager.expressionMap).forEach(name => {
+      activeAnimationBaseExpressions[name] = vrm.expressionManager.getValue(name) ?? 0;
+    });
+  }
+  activeAnimationBaseLookAt = vrm?.lookAt ? {
+    yaw: vrm.lookAt.yaw,
+    pitch: vrm.lookAt.pitch,
+    autoUpdate: vrm.lookAt.autoUpdate,
+  } : null;
+}
+
+function restoreAnimationBaseState() {
+  if (activeAnimationBasePose && vrm?.humanoid) {
+    vrm.humanoid.setNormalizedPose(activeAnimationBasePose);
+  } else {
+    vrm?.humanoid?.resetNormalizedPose?.();
+  }
+
+  if (activeAnimationBaseExpressions && vrm?.expressionManager) {
+    Object.entries(activeAnimationBaseExpressions).forEach(([name, value]) => {
+      vrm.expressionManager.setValue(name, value);
+      syncExprSlider(name, value);
+    });
+  }
+
+  if (activeAnimationBaseLookAt && vrm?.lookAt) {
+    vrm.lookAt.yaw = activeAnimationBaseLookAt.yaw;
+    vrm.lookAt.pitch = activeAnimationBaseLookAt.pitch;
+    vrm.lookAt.autoUpdate = activeAnimationBaseLookAt.autoUpdate;
+  }
+}
+
+async function parseVrmAnimationBuffer(buffer) {
+  if (looksLikeHtml(buffer)) {
+    throw new Error('That URL returned a page, not a .vrma animation file.');
+  }
+  const loader = new GLTFLoader();
+  loader.register(parser => new VRMAnimationLoaderPlugin(parser));
+  const gltf = await loader.parseAsync(buffer, '');
+  const vrmAnimation = gltf.userData.vrmAnimations?.[0];
+  if (!vrmAnimation) throw new Error('That file does not contain a VRM Animation clip.');
+  return vrmAnimation;
+}
+
+async function loadVrmAnimationFromUrl(preset) {
+  if (vrmAnimationCache.has(preset.id)) return vrmAnimationCache.get(preset.id);
+  const resp = await fetch(preset.url);
+  if (!resp.ok) {
+    throw new Error(`${preset.label} is not downloaded yet. Expected ${preset.url}`);
+  }
+  const buffer = await resp.arrayBuffer();
+  if (looksLikeHtml(buffer)) {
+    throw new Error(`${preset.label} is not downloaded yet. Expected ${preset.url}`);
+  }
+  const vrmAnimation = await parseVrmAnimationBuffer(buffer);
+  vrmAnimationCache.set(preset.id, vrmAnimation);
+  return vrmAnimation;
+}
+
+async function playLoadedVrmAnimation(vrmAnimation, id, label) {
+  if (!vrm) {
+    showError('Load a VRM model first.');
+    updateAnimationStatus('Load a VRM first');
+    return;
+  }
+  if (captureActive) stopLiveCapture();
+  if (playingRecording) stopReplay();
+
+  stopActiveVrmAnimation();
+  captureAnimationBaseState();
+
+  try {
+    attachLookAtProxy(vrm);
+    const clip = createVRMAnimationClip(vrmAnimation, vrm);
+    vrmAnimationMixer = new THREE.AnimationMixer(vrm.scene);
+    vrmAnimationAction = vrmAnimationMixer.clipAction(clip);
+    vrmAnimationAction.reset().play();
+    if (vrm.lookAt) {
+      vrm.lookAt.reset();
+      vrm.lookAt.autoUpdate = vrmAnimation.lookAtTrack != null;
+    }
+    activeAnimationId = id;
+    updateAnimationStatus(`${label} · playing`);
+    updateAnimationControls();
+  } catch (err) {
+    stopActiveVrmAnimation();
+    throw err;
+  }
+}
+
+function stopActiveVrmAnimation() {
+  if (vrmAnimationAction) vrmAnimationAction.stop();
+  vrmAnimationMixer?.stopAllAction();
+  vrmAnimationAction = null;
+  vrmAnimationMixer = null;
+  activeAnimationId = null;
+  restoreAnimationBaseState();
+  activeAnimationBasePose = null;
+  activeAnimationBaseExpressions = null;
+  activeAnimationBaseLookAt = null;
+  updateAnimationControls(true);
+}
+
+function updateAnimationStatus(text) {
+  const status = document.getElementById('vrm-animation-status');
+  if (status) status.textContent = text;
+}
+
+function renderAnimationButtons() {
+  const results = document.getElementById('vrm-animation-results');
+  const search = document.getElementById('vrm-animation-search');
+  if (!results) return;
+
+  const query = (search?.value || '').trim().toLowerCase();
+  const matches = ANIMATION_PRESETS.filter(anim => {
+    const haystack = `${anim.label} ${anim.keywords}`.toLowerCase();
+    return !query || haystack.includes(query);
+  });
+
+  if (!matches.length) {
+    results.innerHTML = '<p class="vrm-animation-empty">No matches</p>';
+    return;
+  }
+
+  results.innerHTML = matches.map(anim => `
+    <button
+      class="vrm-animation-chip"
+      type="button"
+      data-animation-id="${escapeHtml(anim.id)}"
+      aria-pressed="${activeAnimationId === anim.id ? 'true' : 'false'}"
+    >${escapeHtml(anim.label)}</button>
+  `).join('');
+  updateAnimationControls();
+}
+
+async function playAnimationPreset(id) {
+  const preset = ANIMATION_PRESETS.find(anim => anim.id === id);
+  if (!preset) return;
+  updateAnimationStatus(`${preset.label} · loading`);
+  try {
+    const vrmAnimation = await loadVrmAnimationFromUrl(preset);
+    await playLoadedVrmAnimation(vrmAnimation, preset.id, preset.label);
+  } catch (err) {
+    console.warn('[VRM Editor] animation unavailable:', err);
+    updateAnimationStatus(err.message);
+    showError(`Could not play ${preset.label}: ${err.message}`);
+    updateAnimationControls(false);
+  }
+}
+
+async function playVrmAnimationFile(file) {
+  updateAnimationStatus(`${file.name} · loading`);
+  try {
+    const vrmAnimation = await parseVrmAnimationBuffer(await file.arrayBuffer());
+    const label = file.name.replace(/\.vrma$/i, '');
+    await playLoadedVrmAnimation(vrmAnimation, `file:${file.name}`, label);
+  } catch (err) {
+    console.warn('[VRM Editor] animation file unavailable:', err);
+    updateAnimationStatus(err.message);
+    showError(`Could not play ${file.name}: ${err.message}`);
+    updateAnimationControls(false);
+  }
+}
+
+function initAnimationPanel() {
+  renderAnimationButtons();
+  document.getElementById('vrm-animation-search')
+    ?.addEventListener('input', renderAnimationButtons);
+  document.getElementById('vrm-animation-results')
+    ?.addEventListener('click', event => {
+      const btn = event.target.closest('[data-animation-id]');
+      if (!btn) return;
+      playAnimationPreset(btn.dataset.animationId);
+    });
+  document.getElementById('vrm-stop-animation-btn')
+    ?.addEventListener('click', stopActiveVrmAnimation);
+  document.getElementById('vrm-import-vrma-btn')
+    ?.addEventListener('click', () => document.getElementById('vrm-vrma-input')?.click());
+  document.getElementById('vrm-vrma-input')
+    ?.addEventListener('change', async event => {
+      const file = event.target.files?.[0];
+      if (file) await playVrmAnimationFile(file);
+      event.target.value = '';
+    });
+}
+
+function updateAnimationControls(resetStatus = false) {
+  const playing = Boolean(vrmAnimationMixer);
+  const stopBtn = document.getElementById('vrm-stop-animation-btn');
+  if (stopBtn) stopBtn.disabled = !playing;
+  document.querySelectorAll('[data-animation-id]').forEach(btn => {
+    const active = activeAnimationId === btn.dataset.animationId;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  });
+  if (!playing && resetStatus) updateAnimationStatus('No animation playing');
 }
 
 function updateRecordUI() {
@@ -850,6 +1127,19 @@ function hideExportModal() {
   if (backdrop) backdrop.hidden = true;
 }
 
+function openMotionLibrary() {
+  navigate('motion-capture');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.getElementById('motion-library-card')?.scrollIntoView({
+        block: 'center',
+        behavior: 'smooth',
+      });
+      document.getElementById('motionSearchQuery')?.focus({ preventScroll: true });
+    });
+  });
+}
+
 // ─── Public Entry Point ───────────────────────────────────────────────────────
 
 export function initVrmEditor() {
@@ -888,6 +1178,10 @@ export function initVrmEditor() {
   document.getElementById('vrm-back-btn')
     ?.addEventListener('click', () => navigate('home'));
 
+  // ── Button: jump to saved/processed motion clips ──────────────────────────
+  document.getElementById('vrm-open-motion-library')
+    ?.addEventListener('click', openMotionLibrary);
+
   // ── Button / file input: open file ───────────────────────────────────────
   const fileInput = document.getElementById('vrm-file-input');
   fileInput?.addEventListener('change', async e => {
@@ -916,6 +1210,9 @@ export function initVrmEditor() {
   // ── Button: T-Pose ───────────────────────────────────────────────────────
   document.getElementById('vrm-tpose-btn')
     ?.addEventListener('click', resetTPose);
+
+  // ── Floating animation panel ────────────────────────────────────────────
+  initAnimationPanel();
 
   // ── Button: snapshot ─────────────────────────────────────────────────────
   document.getElementById('vrm-snapshot-btn')

@@ -22,13 +22,14 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",
-    "@pixiv/three-vrm": "^3.0.0",
-    "kalidokit": "^1.1.5",
     "@fastify/multipart": "^9.0.3",
     "@mediapipe/drawing_utils": "^0.3.1675466124",
     "@mediapipe/holistic": "^0.5.1675471629",
+    "@pixiv/three-vrm": "^3.0.0",
+    "@pixiv/three-vrm-animation": "^3.5.4",
     "better-sqlite3": "^12.4.1",
     "fastify": "^5.2.1",
+    "kalidokit": "^1.1.5",
     "three": "^0.184.0"
   },
   "devDependencies": {

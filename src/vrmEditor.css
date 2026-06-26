@@ -53,6 +53,28 @@
   color: var(--text);
 }
 
+.vrm-header-btn {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.vrm-header-btn:hover {
+  border-color: var(--vrm-accent);
+  color: var(--vrm-accent);
+}
+
 .vrm-editor-title {
   font-size: 14px;
   font-weight: 700;
@@ -118,6 +140,7 @@
    ============================================================ */
 
 .vrm-panel-section {
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--border);
   overflow: hidden;
 }
@@ -310,6 +333,16 @@
   color: var(--vrm-accent);
 }
 
+.vrm-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.vrm-btn:disabled:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
 .vrm-btn--accent {
   background: var(--vrm-accent);
   color: #000;
@@ -456,6 +489,121 @@
 .vrm-drop-zone-sub {
   font-size: 13px;
   opacity: 0.5;
+}
+
+/* ============================================================
+   Floating animation panel
+   ============================================================ */
+
+.vrm-animation-float {
+  position: absolute;
+  left: 16px;
+  bottom: 58px;
+  z-index: 8;
+  width: min(260px, calc(100% - 32px));
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  background: rgba(10, 13, 19, 0.88);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.vrm-animation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vrm-animation-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vrm-animation-stop {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vrm-animation-stop:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.vrm-animation-search {
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.vrm-animation-search:focus-visible {
+  border-color: var(--vrm-accent);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.14);
+}
+
+.vrm-animation-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 30px;
+}
+
+.vrm-animation-chip {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.vrm-animation-chip:hover,
+.vrm-animation-chip.is-active {
+  border-color: var(--vrm-accent);
+  color: var(--vrm-accent);
+  background: rgba(168, 85, 247, 0.1);
+}
+
+.vrm-animation-empty,
+.vrm-animation-status {
+  margin: 0;
+  color: var(--soft);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 /* ============================================================
@@ -640,4 +788,28 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+@media (max-width: 760px) {
+  .vrm-editor-body {
+    flex-direction: column;
+  }
+
+  .vrm-editor-panel {
+    width: 100%;
+    min-width: 0;
+    max-height: 38dvh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .vrm-editor-viewport {
+    min-height: 52dvh;
+  }
+
+  .vrm-animation-float {
+    left: 12px;
+    bottom: 58px;
+    width: min(240px, calc(100% - 24px));
+  }
 }

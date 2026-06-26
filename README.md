@@ -27,6 +27,16 @@ diagnostics laid out anatomically (head on top, body in the middle, hands on eit
 Landmark tables open as toggle popups via each tile's **Data** button. Strict no-scroll on
 the wide display; it stacks and scrolls on smaller screens.
 
+## VRM Editor
+
+Open `/#vrm-editor` to load a `.vrm` avatar, drive it from camera or video, record/replay
+motion JSON, and play authored `.vrma` animations. The floating animation panel in the
+viewport has search, preset buttons, **Import .VRMA**, and **Stop**.
+
+Local animation assets live under `public/vrma/`. The official VRoid/BOOTH sample motion
+pack is installed on this machine for local use, but its binary motion files are not
+committed to GitHub.
+
 ## Docs
 
 `AGENTS.md` · `HANDOFF.md` · `TODO.md`
