@@ -568,7 +568,9 @@
             <span>Queue</span>
           </div>
           <div class="queue-sidebar-body">
-            <p class="queue-empty">Queue is empty.<br />Jobs will appear here when you process videos.</p>
+            <div id="queue-sidebar-list">
+              <p class="queue-empty">Queue is empty.</p>
+            </div>
           </div>
         </aside>
 
@@ -576,27 +578,88 @@
     </div><!-- /view-motion-capture -->
 
     <!-- ═══════════════════════════════════════════
-         VIEW: Object Detection (stub)
+         VIEW: Object Detection
     ═══════════════════════════════════════════ -->
-    <div id="view-object-detection" class="view od-view" hidden>
-      <div class="od-topbar">
-        <button class="mc-back-btn" id="od-back-btn" type="button" aria-label="Back to Home">
-          &#8592; Home
-        </button>
-        <span class="od-topbar-title">Object Detection</span>
-        <div class="od-tabs" role="tablist">
-          <button class="od-tab is-active" type="button" role="tab">Live</button>
-          <button class="od-tab" type="button" role="tab">Video</button>
-          <button class="od-tab" type="button" role="tab">Multi</button>
+    <div id="view-object-detection" class="view detection-view" hidden>
+      <header class="detection-header">
+        <button id="od-back-btn" type="button" class="mc-back-btn detection-back">&#8592; Home</button>
+        <h2 class="detection-title">Object Detection</h2>
+      </header>
+
+      <nav class="detection-tabs" role="tablist" aria-label="Detection modes">
+        <button class="detection-tab detection-tab--active" role="tab" aria-selected="true"
+          data-tab="live" id="tab-live" aria-controls="panel-live">Live</button>
+        <button class="detection-tab" role="tab" aria-selected="false"
+          data-tab="video" id="tab-video" aria-controls="panel-video">Video</button>
+        <button class="detection-tab" role="tab" aria-selected="false"
+          data-tab="multi" id="tab-multi" aria-controls="panel-multi">Multi</button>
+      </nav>
+
+      <!-- Live tab -->
+      <div class="detection-panel" id="panel-live" role="tabpanel" aria-labelledby="tab-live">
+        <div class="detection-canvas-wrap" id="liveWrap">
+          <video id="liveVideo" class="detection-video" autoplay muted playsinline
+            aria-label="Webcam feed"></video>
+          <canvas id="liveCanvas" class="detection-box-canvas" aria-label="Detection overlay"></canvas>
+        </div>
+        <div class="detection-controls">
+          <button id="liveStart" type="button" class="btn">Start Camera</button>
+          <button id="liveStop" type="button" class="btn btn--ghost" disabled>Stop</button>
+          <label class="detection-field">
+            <span>Confidence</span>
+            <input id="liveConfidence" type="range" min="0.1" max="0.9" step="0.05" value="0.4" />
+            <output id="liveConfidenceValue">0.40</output>
+          </label>
+          <div id="liveStatus" class="detection-status" aria-live="polite">Idle</div>
         </div>
       </div>
-      <div class="od-body">
-        <h2>Object Detection</h2>
-        <p>Coming soon &#8212; live video object identification and tracking.</p>
+
+      <!-- Video tab -->
+      <div class="detection-panel" id="panel-video" role="tabpanel" aria-labelledby="tab-video" hidden>
+        <div class="detection-canvas-wrap" id="videoWrap">
+          <video id="detVideoEl" class="detection-video" controls
+            aria-label="Video file feed"></video>
+          <canvas id="videoCanvas" class="detection-box-canvas" aria-label="Detection overlay"></canvas>
+        </div>
+        <div class="detection-controls">
+          <label class="btn detection-file-label">
+            Load Video
+            <input id="detVideoFile" type="file" accept="video/*" hidden />
+          </label>
+          <label class="detection-field">
+            <span>Confidence</span>
+            <input id="videoConfidence" type="range" min="0.1" max="0.9" step="0.05" value="0.4" />
+            <output id="videoConfidenceValue">0.40</output>
+          </label>
+          <div id="videoStatus" class="detection-status" aria-live="polite">Load a video file to begin</div>
+        </div>
+      </div>
+
+      <!-- Multi tab -->
+      <div class="detection-panel" id="panel-multi" role="tabpanel" aria-labelledby="tab-multi" hidden>
+        <p class="detection-multi-note">
+          Multi-subject mode detects all objects simultaneously. Start the camera to begin.
+        </p>
+        <div class="detection-canvas-wrap" id="multiWrap">
+          <video id="multiVideo" class="detection-video" autoplay muted playsinline
+            aria-label="Multi webcam feed"></video>
+          <canvas id="multiCanvas" class="detection-box-canvas" aria-label="Multi detection overlay"></canvas>
+        </div>
+        <div class="detection-controls">
+          <button id="multiStart" type="button" class="btn">Start Camera</button>
+          <button id="multiStop" type="button" class="btn btn--ghost" disabled>Stop</button>
+          <label class="detection-field">
+            <span>Confidence</span>
+            <input id="multiConfidence" type="range" min="0.1" max="0.9" step="0.05" value="0.4" />
+            <output id="multiConfidenceValue">0.40</output>
+          </label>
+          <div id="multiStatus" class="detection-status" aria-live="polite">Idle</div>
+        </div>
       </div>
     </div>
 
     <script type="module" src="/src/app.js"></script>
+    <script type="module" src="/src/objectDetection.js"></script>
     <script type="module">
       import { initRouter, navigate } from '/src/router.js';
       import { initStudio } from '/src/studio.js';
@@ -604,14 +667,50 @@
       initRouter();
       initStudio();
 
+      // Home card routing
       document.getElementById('card-motion-capture')
         ?.addEventListener('click', () => navigate('motion-capture'));
       document.getElementById('card-object-detection')
         ?.addEventListener('click', () => navigate('object-detection'));
+
+      // Back buttons
       document.getElementById('mc-back-btn')
         ?.addEventListener('click', () => navigate('home'));
       document.getElementById('od-back-btn')
         ?.addEventListener('click', () => navigate('home'));
+
+      // Queue sidebar live polling
+      const queueList = document.getElementById('queue-sidebar-list');
+      async function refreshQueue() {
+        try {
+          const resp = await fetch('/api/queue');
+          if (!resp.ok) return;
+          const { jobs } = await resp.json();
+          if (!queueList) return;
+          if (!jobs?.length) {
+            queueList.innerHTML = '<p class="queue-empty">Queue is empty</p>';
+            return;
+          }
+          queueList.innerHTML = jobs.map(job => {
+            const icon = job.status === 'ready' ? '&#10003;' : job.status === 'processing' ? '&#8987;' : job.status === 'failed' ? '&#10007;' : '&bull;';
+            const pct = job.progress != null ? ` ${job.progress}%` : '';
+            return `<div class="queue-item queue-item--${job.status}" data-id="${job.id}">
+              <span class="queue-icon">${icon}</span>
+              <span class="queue-name">${job.filename || job.id}</span>
+              <span class="queue-status">${job.status}${pct}</span>
+            </div>`;
+          }).join('');
+          // Jump to ready items on click
+          queueList.querySelectorAll('.queue-item--ready').forEach(el => {
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', () => {
+              navigate('motion-capture');
+            });
+          });
+        } catch {}
+      }
+      setInterval(refreshQueue, 3000);
+      refreshQueue();
     </script>
   </body>
 </html>
