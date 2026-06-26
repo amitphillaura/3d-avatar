@@ -3,8 +3,7 @@ import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import { recoverStaleProcessing } from "./lib/processor.js";
 import { registerSegmentRoutes, registerVideoRoutes } from "./routes/index.js";
-import { registerDetectionRoutes } from "./routes/detection.js";
-import { registerAnimalRoutes } from "./routes/animal.js";
+import { registerFileRoutes } from "./routes/files.js";
 import { ensureDataDirs } from "./lib/paths.js";
 import { getDb } from "./db/index.js";
 
@@ -26,8 +25,7 @@ await app.register(multipart, {
 
 registerVideoRoutes(app);
 registerSegmentRoutes(app);
-registerDetectionRoutes(app);
-registerAnimalRoutes(app);
+registerFileRoutes(app);
 
 try {
   await app.listen({ port: PORT, host: HOST });

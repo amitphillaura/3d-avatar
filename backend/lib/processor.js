@@ -153,17 +153,36 @@ export function recoverStaleProcessing(db) {
   console.log(`Recovered ${stuck.length} video(s) stuck in processing`);
 }
 
-async function runPythonProcessor(videoPath, outputPath, fps = TARGET_FPS) {
+function ensureProgressColumn(db) {
+  const cols = db.prepare("PRAGMA table_info(videos)").all();
+  if (!cols.find((c) => c.name === "processing_progress")) {
+    db.prepare("ALTER TABLE videos ADD COLUMN processing_progress INTEGER").run();
+  }
+}
+
+async function runPythonProcessor(videoPath, outputPath, fps = TARGET_FPS, onProgress) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(PYTHON_BIN, [PROCESS_SCRIPT, "--video", videoPath, "--output", outputPath, "--fps", String(fps)], {
       cwd: PROJECT_ROOT,
       stdio: ["ignore", "pipe", "pipe"]
     });
 
-    let stdout = "";
+    let stdoutBuf = "";
     let stderr = "";
+    let metaLine = "{}";
+
     child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
+      stdoutBuf += chunk.toString();
+      const lines = stdoutBuf.split("\n");
+      stdoutBuf = lines.pop(); // keep incomplete line
+      for (const line of lines) {
+        if (line.startsWith("PROGRESS:")) {
+          const pct = parseInt(line.slice(9), 10);
+          if (!Number.isNaN(pct) && onProgress) onProgress(pct);
+        } else if (line.trim()) {
+          metaLine = line;
+        }
+      }
     });
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
@@ -172,12 +191,19 @@ async function runPythonProcessor(videoPath, outputPath, fps = TARGET_FPS) {
       reject(new Error(`Failed to start python3 processor: ${error.message}`));
     });
     child.on("close", (code) => {
+      // flush remaining buffered stdout
+      if (stdoutBuf.trim()) {
+        if (stdoutBuf.startsWith("PROGRESS:")) {
+          const pct = parseInt(stdoutBuf.slice(9), 10);
+          if (!Number.isNaN(pct) && onProgress) onProgress(pct);
+        } else {
+          metaLine = stdoutBuf;
+        }
+      }
       if (code !== 0) {
-        reject(new Error(stderr.trim() || stdout.trim() || `Processor exited with code ${code}`));
+        reject(new Error(stderr.trim() || metaLine || `Processor exited with code ${code}`));
         return;
       }
-      const lines = stdout.trim().split("\n").filter(Boolean);
-      const metaLine = lines[lines.length - 1] || "{}";
       try {
         resolvePromise(JSON.parse(metaLine));
       } catch {
@@ -204,8 +230,13 @@ export async function processVideoJob({
   discardProcessedLandmarks(db, videoId);
   db.prepare("UPDATE videos SET status = ?, error_message = NULL WHERE id = ?").run("processing", videoId);
 
+  ensureProgressColumn(db);
+  db.prepare("UPDATE videos SET processing_progress = 0 WHERE id = ?").run(videoId);
+
   try {
-    const meta = await runPythonProcessor(sourcePath, rawPath, TARGET_FPS);
+    const meta = await runPythonProcessor(sourcePath, rawPath, TARGET_FPS, (pct) => {
+      db.prepare("UPDATE videos SET processing_progress = ? WHERE id = ?").run(pct, videoId);
+    });
 
     const insertFrame = db.prepare(`
       INSERT INTO frames (
