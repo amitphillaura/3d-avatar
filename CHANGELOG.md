@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — Object detection working & fast
+
+### Fixed (Object Detection tool)
+- **Camera live but no objects detected.** Three independent defects:
+  - Detection routes were never registered in `backend/server.js`, so every
+    `/api/detect/*` call returned `404`; the frontend silently drew nothing (a 404 body
+    has no `detections`). Registered `registerDetectionRoutes` (and `registerAnimalRoutes`).
+  - `runDetect()` wasn't awaited, so the route's `finally` deleted the temp frame before
+    the Python worker could read it → empty results. Awaited at all three call sites.
+  - The worker spawned system `python3` (no Ultralytics) instead of the project venv.
+    Now resolves `backend/.venv/bin/python3` (with `DETECT_PYTHON` override), mirroring
+    `lib/processor.js`.
+
+### Changed (performance & quality)
+- YOLO runs on the Apple GPU (**MPS**) / CUDA when available (CPU fallback), with a
+  startup warm-up inference. Default model is now **`yolov8s`** (better recall);
+  `DETECT_MODEL` env overrides.
+- Frontend detect loop floor lowered `500ms → 100ms` (~2 fps → ~10 fps) and frames are
+  downscaled to 640 px before sending (YOLO resizes to 640 internally). Measured ~24 fps
+  full round-trip.
+- `backend/README.md` documents the detection pipeline, routes, env config, and
+  troubleshooting.
+
 ## Unreleased — Mushy-only (GLB removed)
 
 ### Removed
