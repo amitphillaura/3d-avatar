@@ -31,6 +31,22 @@ let captureObjectUrl = null;
 let currentFileName = '';
 let exprSliders = {};
 
+// ── Motion record / replay ──
+// Bones and expressions that capture drives — the set we snapshot per frame.
+const RECORDED_BONES = [
+  'Neck', 'Head', 'Hips', 'Chest', 'Spine',
+  'RightUpperArm', 'RightLowerArm', 'LeftUpperArm', 'LeftLowerArm',
+  'LeftHand', 'RightHand',
+];
+const RECORDED_EXPR = ['blink', 'blinkLeft', 'blinkRight'];
+let recording = false;
+let recordedFrames = [];     // [{ t, bones:{name:[x,y,z,w]}, expr:{name:val} }]
+let recordStartTime = 0;
+let playingRecording = false;
+let replayStartTime = 0;
+const _qa = new THREE.Quaternion();
+const _qb = new THREE.Quaternion();
+
 // Kalidokit solvers — loaded once via dynamic import on first use
 let KFace = null;
 let KPose = null;
@@ -120,6 +136,7 @@ function startRenderLoop() {
     const delta = lastFrameTime ? (now - lastFrameTime) / 1000 : 0;
     lastFrameTime = now;
     controls?.update();
+    if (playingRecording) applyRecordedPose(now - replayStartTime);
     if (vrm) {
       vrm.update(delta);
     }
@@ -494,6 +511,7 @@ function cleanupCaptureVideo() {
 
 function stopLiveCapture() {
   captureActive = false;
+  if (recording) stopRecording();
   if (cameraStream) {
     cameraStream.getTracks().forEach(t => t.stop());
     cameraStream = null;
@@ -505,6 +523,7 @@ function stopLiveCapture() {
 function onHolisticResults(results) {
   if (!vrm || !captureActive) return;
   applyHolisticToVrm(vrm, results);
+  if (recording) recordFrame();
 }
 
 // ─── Kalidokit → VRM Rigging ─────────────────────────────────────────────────
@@ -605,6 +624,137 @@ function syncExprSlider(name, value) {
   const v = Math.max(0, Math.min(1, value));
   s.input.value = v;
   s.output.textContent = v.toFixed(2);
+}
+
+// ─── Motion Record / Replay ──────────────────────────────────────────────────
+
+function recordFrame() {
+  if (!vrm) return;
+  const bones = {};
+  for (const name of RECORDED_BONES) {
+    const node = vrm.humanoid?.getRawBoneNode(VRMHumanBoneName[name]);
+    if (node) { const q = node.quaternion; bones[name] = [q.x, q.y, q.z, q.w]; }
+  }
+  const expr = {};
+  if (vrm.expressionManager) {
+    for (const e of RECORDED_EXPR) expr[e] = vrm.expressionManager.getValue(e) ?? 0;
+  }
+  recordedFrames.push({ t: performance.now() - recordStartTime, bones, expr });
+  if (recordedFrames.length % 10 === 0) updateRecordUI();
+}
+
+function startRecording() {
+  if (!captureActive) { showError('Start capture (webcam or video) first, then record.'); return; }
+  recordedFrames = [];
+  recordStartTime = performance.now();
+  recording = true;
+  updateRecordUI();
+}
+
+function stopRecording() {
+  recording = false;
+  updateRecordUI();
+}
+
+function startReplay() {
+  if (!recordedFrames.length) { showError('Record a performance first.'); return; }
+  if (!vrm) { showError('Load a VRM model first.'); return; }
+  if (captureActive) stopLiveCapture();
+  playingRecording = true;
+  replayStartTime = performance.now();
+  updateRecordUI();
+}
+
+function stopReplay() {
+  playingRecording = false;
+  updateRecordUI();
+}
+
+// Interpolate the recorded bone rotations + expressions for the looped playhead.
+function applyRecordedPose(tMs) {
+  const n = recordedFrames.length;
+  if (!n || !vrm) return;
+  const dur = recordedFrames[n - 1].t;
+  const t = dur > 0 ? (tMs % dur) : 0;
+  let i = 1;
+  while (i < n && recordedFrames[i].t < t) i++;
+  const f0 = recordedFrames[i - 1];
+  const f1 = recordedFrames[Math.min(i, n - 1)];
+  const span = (f1.t - f0.t) || 1;
+  const a = Math.max(0, Math.min(1, (t - f0.t) / span));
+  for (const name of RECORDED_BONES) {
+    const q0 = f0.bones[name];
+    if (!q0) continue;
+    const q1 = f1.bones[name] || q0;
+    const node = vrm.humanoid?.getRawBoneNode(VRMHumanBoneName[name]);
+    if (!node) continue;
+    _qa.set(q0[0], q0[1], q0[2], q0[3]);
+    _qb.set(q1[0], q1[1], q1[2], q1[3]);
+    node.quaternion.copy(_qa).slerp(_qb, a);
+  }
+  if (vrm.expressionManager && f0.expr) {
+    for (const e of RECORDED_EXPR) {
+      const v0 = f0.expr[e] ?? 0;
+      const v1 = f1.expr?.[e] ?? v0;
+      const v = v0 + (v1 - v0) * a;
+      vrm.expressionManager.setValue(e, v);
+      syncExprSlider(e, v);
+    }
+  }
+}
+
+function exportMotion() {
+  if (!recordedFrames.length) { showError('Nothing recorded yet.'); return; }
+  const data = {
+    type: 'vrm-motion', version: 1,
+    duration: recordedFrames[recordedFrames.length - 1].t,
+    frameCount: recordedFrames.length,
+    bones: RECORDED_BONES, expressions: RECORDED_EXPR,
+    frames: recordedFrames,
+  };
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'vrm-motion.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function loadMotion(file) {
+  try {
+    const data = JSON.parse(await file.text());
+    if (data?.type !== 'vrm-motion' || !Array.isArray(data.frames) || !data.frames.length) {
+      throw new Error('Not a VRM motion file.');
+    }
+    recordedFrames = data.frames;
+    updateRecordUI();
+  } catch (e) {
+    showError('Could not load motion: ' + e.message);
+  }
+}
+
+function updateRecordUI() {
+  const recBtn = document.getElementById('vrm-record-btn');
+  const playBtn = document.getElementById('vrm-replay-btn');
+  const exportBtn = document.getElementById('vrm-export-motion-btn');
+  const status = document.getElementById('vrm-record-status');
+  if (recBtn) recBtn.textContent = recording ? '⏹ Stop Recording' : '⏺ Record';
+  if (playBtn) {
+    playBtn.textContent = playingRecording ? '⏹ Stop Replay' : '▶ Replay';
+    playBtn.disabled = !recordedFrames.length && !playingRecording;
+  }
+  if (exportBtn) exportBtn.disabled = !recordedFrames.length;
+  if (status) {
+    if (recording) {
+      status.textContent = `Recording… ${recordedFrames.length} frames`;
+    } else if (recordedFrames.length) {
+      const dur = (recordedFrames[recordedFrames.length - 1].t / 1000).toFixed(1);
+      status.textContent = `${recordedFrames.length} frames · ${dur}s${playingRecording ? ' · replaying' : ''}`;
+    } else {
+      status.textContent = 'No recording yet';
+    }
+  }
 }
 
 // ─── Drag and Drop ───────────────────────────────────────────────────────────
@@ -797,6 +947,23 @@ export function initVrmEditor() {
     if (f) startVideoCapture(f);
     captureVideoInput.value = '';
   });
+
+  // ── Motion record / replay / export / load ───────────────────────────────
+  document.getElementById('vrm-record-btn')
+    ?.addEventListener('click', () => { recording ? stopRecording() : startRecording(); });
+  document.getElementById('vrm-replay-btn')
+    ?.addEventListener('click', () => { playingRecording ? stopReplay() : startReplay(); });
+  document.getElementById('vrm-export-motion-btn')
+    ?.addEventListener('click', exportMotion);
+  const motionInput = document.getElementById('vrm-motion-input');
+  document.getElementById('vrm-load-motion-btn')
+    ?.addEventListener('click', () => motionInput?.click());
+  motionInput?.addEventListener('change', () => {
+    const f = motionInput.files?.[0];
+    if (f) loadMotion(f);
+    motionInput.value = '';
+  });
+  updateRecordUI();
 
   // ── Camera presets ───────────────────────────────────────────────────────
   ['front', 'side', 'top', 'quarter'].forEach(name => {

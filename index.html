@@ -839,6 +839,23 @@
               <button id="vrm-capture-video-btn" class="vrm-btn vrm-btn--sm" type="button" style="margin-top:8px">
                 &#127902; Drive from video&hellip;
               </button>
+
+              <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.08);padding-top:10px">
+                <div style="font-size:11px;color:var(--soft);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Motion</div>
+                <p style="font-size:12px;color:var(--soft);margin:0 0 8px;line-height:1.4">
+                  Record while capturing, then replay the performance on a loop, export it, or load one back.
+                </p>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <button id="vrm-record-btn" class="vrm-btn vrm-btn--sm" type="button">&#9210; Record</button>
+                  <button id="vrm-replay-btn" class="vrm-btn vrm-btn--sm" type="button" disabled>&#9654; Replay</button>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+                  <button id="vrm-export-motion-btn" class="vrm-btn vrm-btn--sm" type="button" disabled>&#128190; Export motion</button>
+                  <input id="vrm-motion-input" type="file" accept="application/json,.json" hidden aria-label="Load a saved motion file" />
+                  <button id="vrm-load-motion-btn" class="vrm-btn vrm-btn--sm" type="button">&#128193; Load motion</button>
+                </div>
+                <p id="vrm-record-status" style="font-size:11px;color:var(--soft);margin:8px 0 0">No recording yet</p>
+              </div>
             </div>
           </div>
 
