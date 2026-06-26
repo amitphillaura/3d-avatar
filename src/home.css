@@ -1,5 +1,9 @@
 /* ── Home Splash ── */
 
+.view[hidden] {
+  display: none !important;
+}
+
 .home-view {
   width: 100%;
   height: 100dvh;
