@@ -693,8 +693,30 @@
         <div id="mesh-health" class="mesh-health" aria-live="polite">Checking service…</div>
       </header>
 
+      <nav class="mesh-tabs" role="tablist" aria-label="Mesh quality">
+        <button class="mesh-tab is-active" id="mesh-tab-fast" data-mode="fast" role="tab" aria-selected="true">
+          <span class="mesh-tab-title">Fast</span>
+          <span class="mesh-tab-sub">TripoSR · ~1 min</span>
+        </button>
+        <button class="mesh-tab" id="mesh-tab-hq" data-mode="hq" role="tab" aria-selected="false">
+          <span class="mesh-tab-title">High Quality</span>
+          <span class="mesh-tab-sub">SF3D / Hunyuan3D</span>
+        </button>
+      </nav>
+
       <div class="mesh-layout">
         <section class="mesh-controls">
+          <p id="mesh-mode-note" class="mesh-mode-note">Fast preview — soft "clay" geometry, vertex colors.</p>
+
+          <label id="mesh-hq-engine-field" class="mesh-field" hidden>
+            <span>Engine</span>
+            <select id="mesh-hq-engine">
+              <option value="sf3d">SF3D — UV-textured</option>
+              <option value="hunyuan3d">Hunyuan3D — best</option>
+            </select>
+          </label>
+          <div id="mesh-hq-unavailable" class="mesh-unavailable" hidden></div>
+
           <label class="btn mesh-file-label">
             Choose photo
             <input id="mesh-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
@@ -707,10 +729,12 @@
 
           <div class="mesh-options">
             <label class="mesh-check"><input id="mesh-remove-bg" type="checkbox" checked /> Remove background</label>
-            <label class="mesh-check"><input id="mesh-texture" type="checkbox" checked /> Texture</label>
           </div>
 
-          <button id="mesh-generate" type="button" class="btn" disabled>Generate 3D</button>
+          <div class="mesh-actions">
+            <button id="mesh-generate" type="button" class="btn" disabled>Generate 3D</button>
+            <button id="mesh-new" type="button" class="btn btn--ghost" hidden>New image</button>
+          </div>
           <div id="mesh-status" class="detection-status" aria-live="polite">Pick a photo to start.</div>
           <div class="mesh-progress-wrap" id="mesh-progress-wrap" hidden>
             <div class="mesh-progress-bar" id="mesh-progress-bar"></div>

@@ -18,6 +18,63 @@
 .mesh-health[data-state="offline"],
 .mesh-health[data-state="error"] { color: #ff9d9d; background: rgba(255, 100, 100, 0.12); }
 
+/* The [hidden] attribute must win over class display rules (e.g. .mesh-field). */
+.mesh-view [hidden] { display: none !important; }
+
+/* Quality mode tabs */
+.mesh-tabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem 0;
+}
+.mesh-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted, #9aa);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.mesh-tab:hover:not(:disabled) { border-color: rgba(255, 255, 255, 0.3); }
+.mesh-tab.is-active {
+  border-color: var(--accent, #7cc4ff);
+  background: rgba(124, 196, 255, 0.1);
+  color: #fff;
+}
+.mesh-tab:disabled { opacity: 0.5; cursor: default; }
+.mesh-tab-title { font-weight: 600; font-size: 0.9rem; }
+.mesh-tab-sub { font-size: 0.72rem; opacity: 0.8; }
+
+.mesh-mode-note { font-size: 0.82rem; color: var(--text-muted, #9aa); margin: 0; }
+
+.mesh-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; }
+.mesh-field select {
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.mesh-unavailable {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #ffd591;
+  background: rgba(255, 180, 80, 0.1);
+  border: 1px solid rgba(255, 180, 80, 0.25);
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+}
+.mesh-unavailable-hint { display: block; margin-top: 0.25rem; opacity: 0.7; font-size: 0.72rem; }
+
+.mesh-actions { display: flex; gap: 0.5rem; }
+.mesh-actions .btn { flex: 1; }
+
 .mesh-layout {
   display: grid;
   grid-template-columns: minmax(260px, 320px) 1fr;

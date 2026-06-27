@@ -86,10 +86,20 @@ export class MeshViewer {
 
     obj.traverse((node) => {
       if (!node.isMesh) return;
-      // Show vertex colors when present but materialless (the TripoSR case).
-      if (node.geometry?.getAttribute("color") && node.material) {
-        node.material.vertexColors = true;
-        node.material.needsUpdate = true;
+      const geo = node.geometry;
+      // Smooth shading: TripoSR's marching-cubes output is faceted, which reads as
+      // blocky "clay." Recomputing vertex normals + non-flat shading smooths it a lot.
+      if (geo) {
+        geo.computeVertexNormals();
+      }
+      const mat = node.material;
+      if (mat) {
+        // Show vertex colors when present but materialless (the TripoSR case).
+        if (geo?.getAttribute("color")) mat.vertexColors = true;
+        mat.flatShading = false;
+        if ("roughness" in mat) mat.roughness = 0.85; // matte, not plastic
+        if ("metalness" in mat) mat.metalness = 0.0;
+        mat.needsUpdate = true;
       }
     });
 
