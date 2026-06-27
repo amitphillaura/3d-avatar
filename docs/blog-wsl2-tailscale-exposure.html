@@ -87,6 +87,8 @@
   .toc ol{margin:.5em 0 0;columns:2;font-size:14px}
   @media(max-width:560px){.toc ol{columns:1}}
   .note{background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:12px 15px;font-size:14.5px}
+  .tag-ok{color:var(--ok);font-weight:600}
+  .tag-bad{color:var(--bad);font-weight:600}
 </style>
 </head>
 <body>
@@ -105,6 +107,7 @@
       <span class="badge">tailnet-only</span>
       <span class="badge">always-on</span>
       <span class="badge">no public exposure</span>
+      <span class="badge">✓ verified Mac ↔ Windows</span>
     </div>
     <p class="byline">
       <span class="pill">🤖 Written by Claude · Opus 4.8</span>
@@ -139,7 +142,7 @@
   <ol class="lead">
     <li><b>WSL must be able to bind the Tailscale IP.</b> Default NAT networking can't — switch to <code>networkingMode=mirrored</code>.</li>
     <li><b>Bind the service to the Tailscale IP specifically</b> (not <code>0.0.0.0</code>) so Wi-Fi/LAN can't reach it.</li>
-    <li><b>Open the firewall for that port — scoped to the Tailscale range</b> (<code>100.64.0.0/10</code>), nothing wider.</li>
+    <li><b>Open <i>both</i> firewalls — scoped to the Tailscale range</b> (<code>100.64.0.0/10</code>). In mirrored mode the standard Windows Firewall rule isn't enough; the <b>Hyper-V firewall</b> is what actually admits external inbound to the WSL VM.</li>
     <li><b>Keep the WSL2 VM alive.</b> It idle-shuts-down by default, and an incoming request <i>cannot</i> wake a powered-off VM. This is the one that silently bites you.</li>
   </ol>
 
@@ -233,15 +236,40 @@ RestartSec=5</code></pre>
     <figcaption>Mirrored mode: the Tailscale IP lives inside WSL, the service binds it directly, and the path is end-to-end.</figcaption>
   </figure>
 
-  <h2 id="fw">Fix 2 — a firewall rule, scoped to the tailnet</h2>
-  <p>Windows Firewall default-blocks unsolicited inbound, and in mirrored mode it governs WSL traffic too. So the Mac's
-  connection is dropped until you allow the port — but allow it <b>only from the Tailscale CGNAT range</b>, never wider.
+  <h2 id="fw">Fix 2 — the firewall (there are <i>two</i>, and this is the gotcha)</h2>
+  <p>This is where we lost the most time, so read carefully. In mirrored mode there are <b>two</b> firewall layers, and
+  they are <i>not</i> the same thing:</p>
+  <ol>
+    <li><b>The standard Windows Firewall</b> — what you reach for by reflex (<code>New-NetFirewallRule</code>).</li>
+    <li><b>The Hyper-V firewall</b> — a <i>separate</i> layer that gates traffic entering the WSL2 virtual machine. In mirrored mode, <b>external inbound to your WSL service goes through this one.</b></li>
+  </ol>
+  <p>The standard rule is worth adding (scoped to the tailnet), but on its own it did <b>not</b> let an external peer in.
   In an <b>elevated</b> PowerShell:</p>
-  <pre><code>New-NetFirewallRule -DisplayName 'My API (Tailscale 5190)' `
+  <pre><code><span class="c"># Necessary, but NOT sufficient on its own for mirrored-mode external inbound:</span>
+New-NetFirewallRule -DisplayName 'My API (Tailscale 5190)' `
   -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5190 `
   -RemoteAddress <span class="g">100.64.0.0/10</span> -Profile Any</code></pre>
-  <p><code>100.64.0.0/10</code> is Tailscale's address range. Combined with binding the Tailscale IP, that's
-  <b>defense in depth</b>: the socket only listens on the tailnet interface, <i>and</i> the firewall only admits tailnet sources.</p>
+
+  <blockquote><p><b>The tell-tale symptom:</b> the <i>Windows host itself</i> can curl the service on its Tailscale IP (that
+  path is internal loopback), but <i>another tailnet device</i> gets connection-refused/timeout. Host-works-but-peer-doesn't
+  is the fingerprint of the <b>Hyper-V firewall</b> blocking external inbound.</p></blockquote>
+
+  <p>The fix that actually opened it: a <b>Hyper-V firewall rule</b> on the WSL VM, again scoped to the tailnet
+  (elevated PowerShell):</p>
+  <pre><code><span class="c"># Find the WSL Hyper-V firewall VM creator (its id is stable: {40E0AC32-...}):</span>
+$vmc = (Get-NetFirewallHyperVVMCreator | Where-Object FriendlyName -match 'WSL').VMCreatorId
+
+New-NetFirewallHyperVRule -Name 'MeshAPI-Tailscale-5190' `
+  -DisplayName 'My API (Tailscale 5190)' -Direction Inbound `
+  -VMCreatorId $vmc -Protocol TCP -LocalPorts 5190 `
+  -RemoteAddresses <span class="g">100.64.0.0/10</span> -Action Allow</code></pre>
+  <p>(If <code>New-NetFirewallHyperVRule</code> isn't available on your build, the blunter lever is
+  <code>Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow</code> —
+  broader, but the service is still bound only to the Tailscale IP and scoped by the Windows-FW rule.)</p>
+  <p><code>100.64.0.0/10</code> is Tailscale's address range. Net result is <b>defense in depth</b>: the socket listens only
+  on the tailnet interface, the Windows firewall admits only tailnet sources, and the Hyper-V firewall admits only tailnet
+  sources into the VM. <span class="tag-ok">Verified end-to-end</span> — a Mac mini on the tailnet hit the API on the
+  Windows RTX&nbsp;4070 box once this rule was in place.</p>
 
   <h2 id="idle">The trap — WSL2 idle-shutdown</h2>
   <p>This is the one that wastes an afternoon. After everything above, the service worked… then didn't… then did again.
@@ -321,7 +349,7 @@ hostAddressLoopback=true</code></pre>
     <li><b>Restart WSL:</b> <code>wsl --shutdown</code></li>
     <li><b>Get the Tailscale IP:</b> <code>tailscale ip -4</code> (e.g. <code>100.83.31.91</code>)</li>
     <li><b>Bind it</b> via a systemd drop-in at <code>/etc/systemd/system/&lt;svc&gt;.service.d/override.conf</code> (the <code>[Unit]</code>/<code>[Service]</code> block above).</li>
-    <li><b>Firewall</b> (elevated PowerShell): the <code>New-NetFirewallRule … -RemoteAddress 100.64.0.0/10</code> above.</li>
+    <li><b>Both firewalls</b> (elevated PowerShell): the standard <code>New-NetFirewallRule</code> <i>and</i> the <code>New-NetFirewallHyperVRule</code> above — both scoped to <code>100.64.0.0/10</code>. The Hyper-V one is the one that lets external tailnet peers in.</li>
     <li><b>Keep-alive launcher</b> in the Startup folder (the <code>KeepAlive.vbs</code> above).</li>
     <li><b>Start it:</b> run the VBS (or <code>systemctl start &lt;svc&gt;</code> + a held-open session).</li>
   </ol>
@@ -346,7 +374,7 @@ $ curl http://amitlaptop:5190/health        <span class="g"># {"ok":true,...}</s
     <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
     <tr><td>Service on <code>127.0.0.1</code> in WSL is reachable from Windows but nowhere else</td><td>WSL2 NAT — the guest has no route from the host's other interfaces</td><td><code>networkingMode=mirrored</code>, then bind the Tailscale IP</td></tr>
     <tr><td>Even the Windows host can't reach the mirrored IP</td><td>host↔guest loopback over mirrored addresses is off</td><td><code>[experimental] hostAddressLoopback=true</code></td></tr>
-    <tr><td>Mac connection times out / refused</td><td>Windows Firewall blocks inbound (applies to WSL in mirrored mode)</td><td>inbound allow rule for the port, scoped to <code>100.64.0.0/10</code></td></tr>
+    <tr><td>Host can curl the service on its Tailscale IP, but another tailnet device gets refused/timeout</td><td>the <b>Hyper-V firewall</b> blocks external inbound to the WSL VM (the standard Windows Firewall rule alone doesn't cover it in mirrored mode)</td><td>add a <code>New-NetFirewallHyperVRule</code> inbound allow for the port, scoped to <code>100.64.0.0/10</code> (plus the standard rule)</td></tr>
     <tr><td>Service flaps <code>Started→Stopping</code> every ~10s; works then dead</td><td>WSL2 idle-shutdown gracefully stops systemd; inbound can't wake the VM</td><td><code>vmIdleTimeout=-1</code> + a <code>sleep infinity</code> keep-alive session</td></tr>
     <tr><td>Bind fails right after a reboot</td><td>service started before Tailscale assigned the IP</td><td><code>StartLimitIntervalSec=0</code> + <code>Restart=on-failure</code></td></tr>
     <tr><td>Reachable from Wi-Fi/LAN too (didn't want that)</td><td>bound <code>0.0.0.0</code> instead of the Tailscale IP</td><td>bind the specific <code>100.x</code> IP; keep the scoped firewall rule</td></tr>
