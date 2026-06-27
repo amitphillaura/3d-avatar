@@ -9,7 +9,7 @@ Fastify + SQLite · NVIDIA RTX 4070 Laptop (8 GB) · Windows 11.
 
 > 🤖 **Designed, built, debugged & written by Claude** — Anthropic Opus 4.8
 > (`claude-opus-4-8`), end-to-end from the first `nvidia-smi` to a running
-> service. · **June 26, 2026**
+> service to a self-describing v2 API. · **June 26–27, 2026**
 
 ---
 

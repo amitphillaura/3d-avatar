@@ -7,7 +7,7 @@
 <meta name="description" content="Building a photo-to-3D-mesh HTTP API on an RTX 4070 Laptop GPU under WSL2: TripoSR, PyTorch CUDA 12.1, Python 3.11 via uv, Fastify + SQLite. Full version pins, architecture, and the torchmcubes / transformers dependency fixes.">
 <meta name="keywords" content="image to 3D, photo to 3D model, TripoSR, Stable Fast 3D, Hunyuan3D, single image to mesh, image to GLB, PyTorch CUDA 12.1, RTX 4070 Laptop, WSL2 CUDA passthrough, Ubuntu 26.04, Python 3.11 uv, torchmcubes build error, PyMCubes, TorchConfig.cmake not found, Caffe2 CUDA cannot be found, transformers ViTModel state dict, rembg onnxruntime, Fastify, better-sqlite3, systemd service WSL2, Tailscale, Three.js GLTFLoader">
 <meta name="author" content="Claude — Anthropic Opus 4.8 (claude-opus-4-8)">
-<meta name="date" content="2026-06-26">
+<meta name="date" content="2026-06-27">
 <style>
   :root{
     --bg:#fbfcfe; --fg:#1b2230; --muted:#5b6578; --line:#e4e8f0;
@@ -115,7 +115,7 @@
     </div>
     <p class="byline">
       <span class="pill">🤖 Built by Claude · Opus 4.8</span>
-      <span>Designed, debugged, and written end-to-end by <b>Claude</b> (Anthropic <b>Opus&nbsp;4.8</b>, <span class="mid">claude-opus-4-8</span>) — from first <code>nvidia-smi</code> to a running service. <b>June&nbsp;26,&nbsp;2026</b>.</span>
+      <span>Designed, debugged, and written end-to-end by <b>Claude</b> (Anthropic <b>Opus&nbsp;4.8</b>, <span class="mid">claude-opus-4-8</span>) — from first <code>nvidia-smi</code> to a running service to a self-describing v2 API. <b>June&nbsp;26–27,&nbsp;2026</b>.</span>
     </p>
   </div>
 </header>
@@ -134,6 +134,7 @@
       <li><a href="#odyssey">The dependency odyssey</a></li>
       <li><a href="#service">Start-on-boot service</a></li>
       <li><a href="#results">Results</a></li>
+      <li><a href="#v2">v2 — a self-describing API</a></li>
       <li><a href="#errors">Errors &amp; fixes</a></li>
       <li><a href="#keywords">Keywords</a></li>
     </ol>
@@ -361,6 +362,56 @@ GET  /…/result          -> 200 model/gltf-binary, 1.68 MB</code></pre>
   <p>Phase 1 is shippable on its own: any photo → a static textured <code>.glb</code> you can load in a Three.js <code>GLTFLoader</code>, served from a home GPU over a job-queue API that starts on boot and stays local until we bind it to Tailscale.</p>
   <p>The honest caveat for the end goal: every image-to-3D engine emits a <i>static, unrigged</i> mesh in the photo's pose. None produce a VRM humanoid. The mesh step is ~30% of the work; <b>rig → VRM → retarget is the other ~70%</b> — that's Phase&nbsp;2, where the real risk lives.</p>
 
+  <h2 id="v2">v2 — a self-describing API</h2>
+  <p>First contact with a real client (the app calling this over Tailscale) produced
+  the most useful feedback of the project: the API worked, but it made the client
+  do too much guessing. So v2 makes the <b>job record carry everything</b> a client
+  needs — no downloading-and-parsing the GLB to find out what you got.</p>
+  <ul>
+    <li><b>Numeric progress</b> (0–100) on running jobs — a real bar, not a spinner.</li>
+    <li><b>Result metadata</b> inline: <code>bytes, vertices, triangles, bbox, dimensions, vertex_colors, sha256</code>.</li>
+    <li><b>Honest params</b>: <code>params_requested</code> vs <code>params_applied</code>. Asking for <code>texture:true</code> on TripoSR reports back <code>{texture:false, color_source:"vertex"}</code> — because it bakes vertex colors, not a UV material. Don't let a flag lie.</li>
+    <li><b>Timing</b>: <code>started_at, finished_at, duration_ms, queue_wait_ms</code>.</li>
+    <li><b>Content-Length + ETag</b> (the GLB's sha256) with <code>If-None-Match → 304</code>, so clients get download progress and free caching.</li>
+    <li><b>Structured errors</b>: <code>error:{code, message, stage}</code> (e.g. <code>bad_image</code>, <code>oom</code>, <code>model_load_failed</code>) instead of a bare string.</li>
+    <li><b>No path leaks</b>: <code>result_url</code> / <code>thumbnail_url</code> / <code>input_url</code> replace internal filesystem paths.</li>
+    <li><b>Idempotency</b>: a sha256 of image+params dedups identical requests — resubmitting returns the existing job instead of burning 60 s of GPU.</li>
+    <li><b>One-GPU queue</b> with position + ETA when queued; <code>/health</code> reports <code>busy, queue_depth</code>, used VRAM, and capability flags (<code>phase, rig_available, max_image_bytes</code>) so clients <i>discover</i> features rather than assume them.</li>
+    <li><b>Server-rendered thumbnail</b> + the background-removed input the engine actually saw — job-history previews without booting a 3D viewer.</li>
+  </ul>
+
+  <h3>The orientation trap (claiming Y-up ≠ being Y-up)</h3>
+  <p>One v2 feature — "normalize the mesh: centered, unit-scaled, Y-up" — shipped
+  with a bug worth calling out, because it's the classic axis pitfall. The first
+  pass centered and scaled the mesh and <i>reported</i> <code>up_axis:"Y"</code> —
+  but never actually reoriented it. The tell was in the data it returned:
+  <code>dimensions</code> showed the tall axis was <b>Z</b> while it claimed Y. <b>TripoSR
+  emits Z-up; glTF/Three.js are Y-up</b>, so the model rendered lying down.</p>
+  <p>The fix wasn't to guess a rotation — it was to <b>render the four cardinal
+  sides and look</b>. Upright came from <code>Rx(-90)</code> (Z→Y); the chair's
+  front turned out to face +X, so a second <code>Ry(-90)</code> brought it to +Z.
+  Canonical transform: <code>Ry(-90)·Rx(-90)</code> → height +Y, front +Z, and now
+  <code>up_axis</code>/<code>front_axis</code> are <i>true</i>. Lesson: a metadata
+  field that asserts an invariant is a liability until something enforces it — and
+  for orientation, "render it and look" beats reasoning every time.</p>
+
+  <p>A trimmed <code>ready</code> job now looks like:</p>
+  <pre><code>{
+  "status": "ready", "progress": 100,
+  "params_requested": { "texture": true,  "normalize": true },
+  "params_applied":   { "texture": false, "color_source": "vertex", "normalize": true },
+  "result": {
+    "bytes": 1684084, "vertices": 42076, "triangles": 84156,
+    "dimensions": [0.533, 1.0, 0.566], "up_axis": "Y", "front_axis": "+Z",
+    "normalize": { "rotation_deg": {"x":-90,"y":-90}, "scale": 0.938, "fit": "unit-cube" },
+    "sha256": "eb8f0d…"
+  },
+  "timing": { "duration_ms": 66387, "queue_wait_ms": 109 },
+  "result_url": "/api/mesh/jobs/&lt;id&gt;/result",
+  "thumbnail_url": "/api/mesh/jobs/&lt;id&gt;/thumbnail",
+  "input_url": "/api/mesh/jobs/&lt;id&gt;/input"
+}</code></pre>
+
   <h2 id="errors">Errors you might hit (and the fix)</h2>
   <p>Searchable, because these cost hours:</p>
   <table>
@@ -388,7 +439,7 @@ GET  /…/result          -> 200 model/gltf-binary, 1.68 MB</code></pre>
   <footer>
     Built on Windows&nbsp;11 + WSL2 Ubuntu&nbsp;26.04 with an NVIDIA RTX&nbsp;4070 Laptop GPU · TripoSR · PyTorch&nbsp;2.5.1+cu121 · Python&nbsp;3.11.<br>
     Self-contained HTML — images embedded as base64, diagrams as inline SVG.<br>
-    <b>Designed, built, debugged &amp; written by Claude</b> — Anthropic Opus&nbsp;4.8 (<code>claude-opus-4-8</code>) · June&nbsp;26,&nbsp;2026.
+    <b>Designed, built, debugged &amp; written by Claude</b> — Anthropic Opus&nbsp;4.8 (<code>claude-opus-4-8</code>) · June&nbsp;26–27,&nbsp;2026.
   </footer>
 
 </main>

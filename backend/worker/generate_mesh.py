@@ -62,10 +62,20 @@ class WorkerError(Exception):
 # Shared mesh post-processing (engine-agnostic)
 # --------------------------------------------------------------------------- #
 def normalize_mesh(mesh) -> dict:
-    """Center at origin and uniform-scale to fit a unit cube. Returns the
-    applied transform so the client can map back if needed. GLB export is Y-up
-    by the glTF spec, so the result is centered/unit/Y-up."""
+    """Reorient to a canonical upright pose, then center + unit-scale.
+
+    TripoSR emits a Z-up mesh; glTF/Three.js viewers are Y-up, so the raw output
+    renders lying-down. We rotate to glTF-canonical (height along +Y, front along
+    +Z) — the rotation was verified by rendering the four cardinal sides — then
+    center at the origin and uniform-scale to fit a unit cube. The applied
+    transform is reported so a client can invert it if needed. Order: rotate,
+    then translate, then scale."""
     import numpy as np
+    from trimesh.transformations import rotation_matrix
+
+    # Z-up -> Y-up (Rx -90), then turn the front to face +Z (Ry -90).
+    R = rotation_matrix(-np.pi / 2, [0, 1, 0]) @ rotation_matrix(-np.pi / 2, [1, 0, 0])
+    mesh.apply_transform(R)
 
     center = mesh.bounds.mean(axis=0)
     mesh.apply_translation(-center)
@@ -74,10 +84,13 @@ def normalize_mesh(mesh) -> dict:
     mesh.apply_scale(1.0 / maxdim)
     return {
         "applied": True,
-        "translate": [float(-c) for c in center],
+        "reorient": "triposr_z_up -> gltf_y_up, front +Z",
+        "rotation_deg": {"x": -90, "y": -90, "order": "Rx then Ry"},
+        "translate": [float(-c) for c in center],  # post-rotation center
         "scale": float(1.0 / maxdim),
         "fit": "unit-cube",
         "up_axis": "Y",
+        "front_axis": "+Z",
     }
 
 
@@ -224,6 +237,9 @@ def run_triposr(image_path, output_path, *, remove_bg, texture, normalize, job_d
 
     meta = mesh_metadata(mesh, str(out))
     meta["normalize"] = transform
+    # Honest axes: only claim Y-up/front-+Z when we actually reoriented.
+    meta["up_axis"] = "Y" if transform.get("applied") else "Z"
+    meta["front_axis"] = "+Z" if transform.get("applied") else None
     thumb_ok = save_thumbnail(mesh, str(Path(job_dir) / "thumbnail.png"))
     progress(100)
 
