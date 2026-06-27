@@ -6,6 +6,8 @@
 <title>From Photo to 3D Mesh on a Laptop GPU — Building a Home Mesh API (TripoSR, WSL2, RTX 4070)</title>
 <meta name="description" content="Building a photo-to-3D-mesh HTTP API on an RTX 4070 Laptop GPU under WSL2: TripoSR, PyTorch CUDA 12.1, Python 3.11 via uv, Fastify + SQLite. Full version pins, architecture, and the torchmcubes / transformers dependency fixes.">
 <meta name="keywords" content="image to 3D, photo to 3D model, TripoSR, Stable Fast 3D, Hunyuan3D, single image to mesh, image to GLB, PyTorch CUDA 12.1, RTX 4070 Laptop, WSL2 CUDA passthrough, Ubuntu 26.04, Python 3.11 uv, torchmcubes build error, PyMCubes, TorchConfig.cmake not found, Caffe2 CUDA cannot be found, transformers ViTModel state dict, rembg onnxruntime, Fastify, better-sqlite3, systemd service WSL2, Tailscale, Three.js GLTFLoader">
+<meta name="author" content="Claude — Anthropic Opus 4.8 (claude-opus-4-8)">
+<meta name="date" content="2026-06-26">
 <style>
   :root{
     --bg:#fbfcfe; --fg:#1b2230; --muted:#5b6578; --line:#e4e8f0;
@@ -34,6 +36,10 @@
   h1{font-size:33px;line-height:1.18;margin:.35em 0 .25em;letter-spacing:-.015em}
   .dek{color:var(--muted);font-size:18px;margin:.2em 0 1.1em}
   .stackline{font-family:var(--mono);font-size:13px;color:var(--muted)}
+  .byline{margin:16px 0 2px;font-size:14.5px;color:var(--fg);display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .byline .pill{font-family:var(--mono);font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;
+    background:linear-gradient(90deg,rgba(59,109,246,.18),rgba(16,179,163,.18));border:1px solid var(--line)}
+  .byline .mid{color:var(--muted);font-family:var(--mono);font-size:12px}
   .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 4px}
   .badge{font-family:var(--mono);font-size:12px;padding:5px 10px;border-radius:999px;
     background:var(--chip);border:1px solid var(--line);color:var(--fg)}
@@ -107,6 +113,10 @@
       <span class="badge">self-hosted</span>
       <span class="badge">Tailscale-ready</span>
     </div>
+    <p class="byline">
+      <span class="pill">🤖 Built by Claude · Opus 4.8</span>
+      <span>Designed, debugged, and written end-to-end by <b>Claude</b> (Anthropic <b>Opus&nbsp;4.8</b>, <span class="mid">claude-opus-4-8</span>) — from first <code>nvidia-smi</code> to a running service. <b>June&nbsp;26,&nbsp;2026</b>.</span>
+    </p>
   </div>
 </header>
 
@@ -377,7 +387,8 @@ GET  /…/result          -> 200 model/gltf-binary, 1.68 MB</code></pre>
 
   <footer>
     Built on Windows&nbsp;11 + WSL2 Ubuntu&nbsp;26.04 with an NVIDIA RTX&nbsp;4070 Laptop GPU · TripoSR · PyTorch&nbsp;2.5.1+cu121 · Python&nbsp;3.11.<br>
-    Self-contained HTML — images embedded as base64, diagrams as inline SVG.
+    Self-contained HTML — images embedded as base64, diagrams as inline SVG.<br>
+    <b>Designed, built, debugged &amp; written by Claude</b> — Anthropic Opus&nbsp;4.8 (<code>claude-opus-4-8</code>) · June&nbsp;26,&nbsp;2026.
   </footer>
 
 </main>

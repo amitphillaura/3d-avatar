@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exposing a WSL2 Service Over Tailscale (Without Exposing It to Anything Else)</title>
+<meta name="description" content="How to make a service running inside WSL2 reachable from other devices over Tailscale — mirrored networking, binding the Tailscale IP, a scoped firewall rule, and the WSL2 idle-shutdown trap that silently kills always-on servers. Copy-paste config included.">
+<meta name="keywords" content="WSL2 Tailscale, expose WSL2 service, WSL2 mirrored networking, networkingMode=mirrored, hostAddressLoopback, WSL2 port forwarding, WSL2 reachable from another machine, WSL idle shutdown, vmIdleTimeout, keep WSL2 running, systemd service WSL2, bind Tailscale IP, Hyper-V firewall WSL, MagicDNS, self-hosted home server">
+<meta name="author" content="Claude — Anthropic Opus 4.8 (claude-opus-4-8)">
+<meta name="date" content="2026-06-26">
+<style>
+  :root{
+    --bg:#fbfcfe; --fg:#1b2230; --muted:#5b6578; --line:#e4e8f0;
+    --card:#ffffff; --accent:#3b6df6; --accent2:#10b3a3;
+    --ok:#16a34a; --bad:#dc2626; --warn:#d97706;
+    --code-bg:#0f172a; --code-fg:#e2e8f0; --chip:#eef2fb;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{--bg:#0d1017;--fg:#e6eaf2;--muted:#9aa6bd;--line:#222a3a;--card:#141a26;
+      --chip:#1a2233;--code-bg:#070b14;--code-fg:#dbe4f3;}
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);
+    line-height:1.62;font-size:17px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:0 22px 90px}
+  header.hero{background:
+      radial-gradient(1200px 380px at 12% -8%, rgba(16,179,163,.20), transparent 60%),
+      radial-gradient(900px 360px at 92% 0%, rgba(59,109,246,.18), transparent 55%);
+    border-bottom:1px solid var(--line);margin-bottom:8px}
+  .hero .wrap{padding-top:44px;padding-bottom:30px}
+  .eyebrow{font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--accent2);font-weight:600}
+  h1{font-size:32px;line-height:1.18;margin:.35em 0 .25em;letter-spacing:-.015em}
+  .dek{color:var(--muted);font-size:18px;margin:.2em 0 1.1em}
+  .stackline{font-family:var(--mono);font-size:13px;color:var(--muted)}
+  .byline{margin:16px 0 2px;font-size:14.5px;color:var(--fg);display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .byline .pill{font-family:var(--mono);font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;
+    background:linear-gradient(90deg,rgba(16,179,163,.18),rgba(59,109,246,.18));border:1px solid var(--line)}
+  .byline .mid{color:var(--muted);font-family:var(--mono);font-size:12px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 4px}
+  .badge{font-family:var(--mono);font-size:12px;padding:5px 10px;border-radius:999px;
+    background:var(--chip);border:1px solid var(--line);color:var(--fg)}
+  h2{font-size:23px;margin:2.1em 0 .5em;padding-top:.3em;letter-spacing:-.01em;
+    border-top:1px solid var(--line)}
+  h2:first-of-type{border-top:none}
+  h3{font-size:18px;margin:1.5em 0 .4em}
+  p{margin:.7em 0}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em;background:var(--chip);
+    padding:.12em .42em;border-radius:5px;border:1px solid var(--line)}
+  pre{background:var(--code-bg);color:var(--code-fg);padding:15px 17px;border-radius:10px;
+    overflow:auto;font-family:var(--mono);font-size:13px;line-height:1.55;border:1px solid #1e293b}
+  pre code{background:none;border:none;padding:0;color:inherit;font-size:13px}
+  pre .c{color:#7c8aa5}
+  pre .g{color:#86efac}
+  pre .r{color:#fca5a5}
+  table{width:100%;border-collapse:collapse;margin:1em 0;font-size:14.5px;overflow:hidden;
+    border:1px solid var(--line);border-radius:10px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--chip);font-weight:600;font-size:13px}
+  tr:last-child td{border-bottom:none}
+  td code{font-size:12.5px}
+  blockquote{margin:1.1em 0;padding:.5em 16px;border-left:3px solid var(--warn);
+    background:var(--chip);border-radius:0 8px 8px 0;color:var(--fg)}
+  blockquote p{margin:.3em 0}
+  ul,ol{padding-left:1.25em}
+  li{margin:.3em 0}
+  .lead{font-size:18.5px}
+  figure{margin:1.6em 0;text-align:center}
+  figure svg{max-width:100%;height:auto}
+  figcaption{color:var(--muted);font-size:13px;margin-top:8px;font-style:italic}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:1.2em 0}
+  @media(max-width:620px){.cards{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .stat .n{font-size:18px;font-weight:700;letter-spacing:-.02em}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:2px}
+  .kw{font-family:var(--mono);font-size:12.5px;color:var(--muted);line-height:2}
+  .kw b{color:var(--fg);font-weight:600}
+  hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+  footer{color:var(--muted);font-size:13px;margin-top:2.5em;text-align:center}
+  .toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:1.4em 0}
+  .toc strong{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .toc ol{margin:.5em 0 0;columns:2;font-size:14px}
+  @media(max-width:560px){.toc ol{columns:1}}
+  .note{background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:12px 15px;font-size:14.5px}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Engineering log · Networking</div>
+    <h1>Exposing a WSL2 Service Over Tailscale<br>(Without Exposing It to Anything Else)</h1>
+    <p class="dek">A service running <i>inside</i> WSL2 on a Windows laptop, reachable from your Mac over Tailscale —
+      and from nothing else. Mirrored networking, binding the Tailscale IP, a scoped firewall rule,
+      and the silent idle-shutdown trap that kills always-on WSL servers.</p>
+    <p class="stackline">WSL2 (mirrored) · Tailscale · systemd · Windows 11 · Ubuntu 26.04</p>
+    <div class="badges">
+      <span class="badge">WSL2 + Tailscale</span>
+      <span class="badge">mirrored networking</span>
+      <span class="badge">tailnet-only</span>
+      <span class="badge">always-on</span>
+      <span class="badge">no public exposure</span>
+    </div>
+    <p class="byline">
+      <span class="pill">🤖 Written by Claude · Opus 4.8</span>
+      <span>Debugged and documented end-to-end by <b>Claude</b> (Anthropic <b>Opus&nbsp;4.8</b>, <span class="mid">claude-opus-4-8</span>) — straight from the actual fix. <b>June&nbsp;26,&nbsp;2026</b>.</span>
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="toc">
+    <strong>Contents</strong>
+    <ol>
+      <li><a href="#tldr">TL;DR</a></li>
+      <li><a href="#setup">The setup</a></li>
+      <li><a href="#why">Why WSL2 makes this hard</a></li>
+      <li><a href="#mirror">Fix 1 — mirrored networking</a></li>
+      <li><a href="#fw">Fix 2 — a scoped firewall rule</a></li>
+      <li><a href="#idle">The trap — WSL2 idle-shutdown</a></li>
+      <li><a href="#security">The security model</a></li>
+      <li><a href="#recipe">The full recipe</a></li>
+      <li><a href="#verify">Verify</a></li>
+      <li><a href="#errors">Errors &amp; fixes</a></li>
+      <li><a href="#keywords">Keywords</a></li>
+    </ol>
+  </div>
+
+  <h2 id="tldr">TL;DR</h2>
+  <p class="lead">You have a service (an HTTP API, say on port <code>5190</code>) running inside <b>WSL2</b> on a Windows
+  machine, and you want to reach it from another device over <b>Tailscale</b> — but <i>only</i> over Tailscale.
+  Four things have to be true:</p>
+  <ol class="lead">
+    <li><b>WSL must be able to bind the Tailscale IP.</b> Default NAT networking can't — switch to <code>networkingMode=mirrored</code>.</li>
+    <li><b>Bind the service to the Tailscale IP specifically</b> (not <code>0.0.0.0</code>) so Wi-Fi/LAN can't reach it.</li>
+    <li><b>Open the firewall for that port — scoped to the Tailscale range</b> (<code>100.64.0.0/10</code>), nothing wider.</li>
+    <li><b>Keep the WSL2 VM alive.</b> It idle-shuts-down by default, and an incoming request <i>cannot</i> wake a powered-off VM. This is the one that silently bites you.</li>
+  </ol>
+
+  <h2 id="setup">The setup</h2>
+  <table>
+    <tr><th>Piece</th><th>Detail</th></tr>
+    <tr><td>Host</td><td>Windows 11 Pro 24H2 (build 26200)</td></tr>
+    <tr><td>WSL</td><td><b>2.6.3.0</b> (kernel 6.6), <b>Ubuntu 26.04</b>, systemd as PID 1</td></tr>
+    <tr><td>Tailscale</td><td><b>1.98.4</b> on the Windows host; host IP <code>100.83.31.91</code>, MagicDNS name <code>amitlaptop</code></td></tr>
+    <tr><td>The service</td><td>A Node/Fastify API on port <code>5190</code>, run by a systemd unit <i>inside</i> WSL</td></tr>
+    <tr><td>The client</td><td>A Mac on the same tailnet</td></tr>
+    <tr><td>Goal</td><td>Mac → <code>amitlaptop:5190</code> works; LAN/Wi-Fi and the public internet do <b>not</b></td></tr>
+  </table>
+  <p>Find your host's Tailscale IP any time with <code>tailscale ip -4</code>. Everywhere below, substitute your own IP, distro name, and port.</p>
+
+  <h2 id="why">Why WSL2 makes this hard</h2>
+  <p>Tailscale runs on the <b>Windows host</b>. Your service runs in the <b>WSL2 guest</b>, which by default sits behind
+  a NAT with its own private network (<code>172.x</code>). WSL forwards <code>localhost</code> between Windows and the guest,
+  so <code>127.0.0.1:5190</code> works from Windows — but that's it. A packet arriving from the Mac on the host's
+  Tailscale IP has no route into the NAT'd guest. The service is invisible to the tailnet.</p>
+
+  <figure>
+    <svg viewBox="0 0 760 220" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace" font-size="12.5">
+      <defs><marker id="aN" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="currentColor"/></marker>
+      <marker id="aNr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#dc2626"/></marker></defs>
+      <rect x="14" y="86" width="120" height="56" rx="9" fill="currentColor" fill-opacity="0.04" stroke="currentColor" stroke-opacity="0.3"/>
+      <text x="74" y="110" text-anchor="middle" fill="currentColor" font-weight="600">Mac</text>
+      <text x="74" y="128" text-anchor="middle" fill="currentColor" fill-opacity="0.7" font-size="10.5">tailnet peer</text>
+      <line x1="134" y1="114" x2="214" y2="114" stroke="currentColor" stroke-width="1.5" marker-end="url(#aN)"/>
+      <text x="174" y="104" text-anchor="middle" fill="currentColor" fill-opacity="0.7" font-size="10">Tailscale</text>
+      <rect x="218" y="34" width="528" height="160" rx="11" fill="currentColor" fill-opacity="0.04" stroke="currentColor" stroke-opacity="0.45"/>
+      <text x="482" y="54" text-anchor="middle" fill="currentColor" font-weight="600" font-size="12">Windows host</text>
+      <rect x="238" y="86" width="150" height="56" rx="9" fill="#3b6df6" fill-opacity="0.12" stroke="#3b6df6"/>
+      <text x="313" y="108" text-anchor="middle" fill="currentColor" font-weight="600" font-size="11">Tailscale adapter</text>
+      <text x="313" y="126" text-anchor="middle" fill="currentColor" fill-opacity="0.75" font-size="10">100.83.31.91</text>
+      <rect x="430" y="66" width="296" height="104" rx="10" fill="currentColor" fill-opacity="0.05" stroke="currentColor" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+      <text x="578" y="86" text-anchor="middle" fill="currentColor" fill-opacity="0.8" font-size="11">WSL2 guest · NAT 172.x</text>
+      <rect x="452" y="100" width="252" height="52" rx="8" fill="currentColor" fill-opacity="0.04" stroke="currentColor" stroke-opacity="0.3"/>
+      <text x="578" y="122" text-anchor="middle" fill="currentColor" font-size="11">service on 127.0.0.1:5190</text>
+      <text x="578" y="139" text-anchor="middle" fill="currentColor" fill-opacity="0.7" font-size="10">(only reachable from Windows localhost)</text>
+      <line x1="388" y1="120" x2="448" y2="126" stroke="#dc2626" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#aNr)"/>
+      <text x="412" y="160" text-anchor="middle" fill="#dc2626" font-size="11" font-weight="600">no route ✗</text>
+    </svg>
+    <figcaption>Default NAT: the tailnet packet reaches the host's Tailscale adapter but has no route into the NAT'd WSL guest.</figcaption>
+  </figure>
+
+  <h2 id="mirror">Fix 1 — mirrored networking + bind the Tailscale IP</h2>
+  <p>WSL2's <b>mirrored networking mode</b> shares the Windows host's network interfaces directly into the guest.
+  The Tailscale adapter's IP then appears <i>inside</i> WSL, so your service can bind it. Add to <code>%USERPROFILE%\.wslconfig</code>:</p>
+  <pre><code>[wsl2]
+networkingMode=mirrored
+
+[experimental]
+hostAddressLoopback=true   <span class="c"># let the Windows host reach WSL via the mirrored IPs</span></code></pre>
+  <p>Then <code>wsl --shutdown</code> (it reads <code>.wslconfig</code> on next start). After it restarts, the Tailscale IP is a real interface inside WSL:</p>
+  <pre><code><span class="c"># inside WSL</span>
+$ ip -4 addr show | grep inet
+    inet 100.83.31.91/32 ... eth0      <span class="g"># &lt;- the Tailscale IP, now bindable</span>
+    inet 192.168.4.105/22 ... eth1     <span class="c"># the Wi-Fi/LAN IP</span></code></pre>
+  <p>Now <b>bind the service to the Tailscale IP specifically</b> — not <code>0.0.0.0</code>. Binding the exact IP means
+  the LAN/Wi-Fi address simply isn't served; only the tailnet interface answers. With systemd, a machine-local
+  drop-in keeps this out of your committed unit:</p>
+  <pre><code><span class="c"># /etc/systemd/system/&lt;your&gt;.service.d/override.conf</span>
+[Unit]
+StartLimitIntervalSec=0          <span class="c"># retry forever (Tailscale IP may be late at boot)</span>
+
+[Service]
+Environment=HOST=100.83.31.91    <span class="c"># your service's bind-host var</span>
+Restart=on-failure
+RestartSec=5</code></pre>
+  <p>(<code>StartLimitIntervalSec=0</code> matters: at boot the service may start before Tailscale has assigned the IP, so the first bind fails — let systemd keep retrying instead of giving up after the default 5 tries.)</p>
+
+  <figure>
+    <svg viewBox="0 0 760 200" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace" font-size="12.5">
+      <defs><marker id="aM" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#16a34a"/></marker></defs>
+      <rect x="14" y="76" width="120" height="56" rx="9" fill="currentColor" fill-opacity="0.04" stroke="currentColor" stroke-opacity="0.3"/>
+      <text x="74" y="100" text-anchor="middle" fill="currentColor" font-weight="600">Mac</text>
+      <text x="74" y="118" text-anchor="middle" fill="currentColor" fill-opacity="0.7" font-size="10.5">amitlaptop:5190</text>
+      <line x1="134" y1="104" x2="210" y2="104" stroke="#16a34a" stroke-width="1.8" marker-end="url(#aM)"/>
+      <text x="172" y="94" text-anchor="middle" fill="currentColor" fill-opacity="0.7" font-size="10">Tailscale</text>
+      <rect x="214" y="34" width="532" height="140" rx="11" fill="currentColor" fill-opacity="0.04" stroke="currentColor" stroke-opacity="0.45"/>
+      <text x="480" y="54" text-anchor="middle" fill="currentColor" font-weight="600" font-size="12">Windows host  ==  WSL2 (mirrored: shared interfaces)</text>
+      <rect x="236" y="74" width="170" height="60" rx="9" fill="#10b3a3" fill-opacity="0.13" stroke="#10b3a3"/>
+      <text x="321" y="98" text-anchor="middle" fill="currentColor" font-weight="600" font-size="11">Tailscale IP in WSL</text>
+      <text x="321" y="116" text-anchor="middle" fill="currentColor" fill-opacity="0.75" font-size="10.5">100.83.31.91</text>
+      <line x1="406" y1="104" x2="452" y2="104" stroke="#16a34a" stroke-width="1.8" marker-end="url(#aM)"/>
+      <rect x="456" y="74" width="268" height="60" rx="9" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+      <text x="590" y="98" text-anchor="middle" fill="currentColor" font-weight="600" font-size="11">service bound 100.83.31.91:5190</text>
+      <text x="590" y="116" text-anchor="middle" fill="currentColor" fill-opacity="0.75" font-size="10">reachable ✓ · LAN IP not served</text>
+    </svg>
+    <figcaption>Mirrored mode: the Tailscale IP lives inside WSL, the service binds it directly, and the path is end-to-end.</figcaption>
+  </figure>
+
+  <h2 id="fw">Fix 2 — a firewall rule, scoped to the tailnet</h2>
+  <p>Windows Firewall default-blocks unsolicited inbound, and in mirrored mode it governs WSL traffic too. So the Mac's
+  connection is dropped until you allow the port — but allow it <b>only from the Tailscale CGNAT range</b>, never wider.
+  In an <b>elevated</b> PowerShell:</p>
+  <pre><code>New-NetFirewallRule -DisplayName 'My API (Tailscale 5190)' `
+  -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5190 `
+  -RemoteAddress <span class="g">100.64.0.0/10</span> -Profile Any</code></pre>
+  <p><code>100.64.0.0/10</code> is Tailscale's address range. Combined with binding the Tailscale IP, that's
+  <b>defense in depth</b>: the socket only listens on the tailnet interface, <i>and</i> the firewall only admits tailnet sources.</p>
+
+  <h2 id="idle">The trap — WSL2 idle-shutdown</h2>
+  <p>This is the one that wastes an afternoon. After everything above, the service worked… then didn't… then did again.
+  The journal told the story:</p>
+  <pre><code>Started my-api.service
+node[539]: Server listening at http://100.83.31.91:5190
+node[539]: incoming request /health -&gt; 200      <span class="g"># it works!</span>
+<span class="r">Stopping my-api.service...</span>
+<span class="r">Deactivated successfully.</span>                        <span class="c"># ...graceful stop, no crash</span>
+Started my-api.service                            <span class="c"># ...12s later, back again</span></code></pre>
+  <p>Not a crash — a <b>graceful</b> stop. <b>WSL2 powers the whole VM off when it's idle</b> (no active <code>wsl.exe</code>
+  session), which cleanly shuts systemd down with it. The killer detail for a server: <b>an incoming network request does
+  not wake a powered-off WSL VM.</b> Only a <code>wsl</code> command or Windows-localhost access starts it. So your "always-on"
+  API is actually off whenever nobody's looking — and the Mac just sees a dead port.</p>
+
+  <figure>
+    <svg viewBox="0 0 760 188" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace" font-size="12">
+      <text x="14" y="24" fill="currentColor" fill-opacity="0.7" font-size="11">Without keep-alive:</text>
+      <rect x="14" y="34" width="150" height="34" rx="7" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+      <text x="89" y="55" text-anchor="middle" fill="currentColor" font-size="11">VM up · serving</text>
+      <rect x="180" y="34" width="120" height="34" rx="7" fill="currentColor" fill-opacity="0.05" stroke="currentColor" stroke-opacity="0.3"/>
+      <text x="240" y="55" text-anchor="middle" fill="currentColor" fill-opacity="0.7" font-size="10.5">idle ~8s</text>
+      <rect x="316" y="34" width="150" height="34" rx="7" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+      <text x="391" y="55" text-anchor="middle" fill="currentColor" font-size="11">VM powered off</text>
+      <line x1="540" y1="51" x2="500" y2="51" stroke="#dc2626" stroke-width="1.6"/>
+      <text x="548" y="48" fill="#dc2626" font-size="11" font-weight="600">Mac request</text>
+      <text x="548" y="63" fill="#dc2626" font-size="10">→ connection refused ✗</text>
+      <text x="14" y="104" fill="currentColor" fill-opacity="0.7" font-size="11">With keep-alive (sleep infinity holds a session open):</text>
+      <rect x="14" y="116" width="452" height="34" rx="7" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+      <text x="240" y="137" text-anchor="middle" fill="currentColor" font-size="11">VM stays up indefinitely · always serving</text>
+      <line x1="540" y1="133" x2="468" y2="133" stroke="#16a34a" stroke-width="1.6"/>
+      <text x="548" y="130" fill="#16a34a" font-size="11" font-weight="600">Mac request</text>
+      <text x="548" y="145" fill="#16a34a" font-size="10">→ 200 OK ✓</text>
+    </svg>
+    <figcaption>An idle WSL2 VM powers off and can't be woken by an inbound request. A held-open session keeps it up.</figcaption>
+  </figure>
+
+  <h3>The fix: stop it idling, and hold a session open</h3>
+  <p>Two layers. First, tell WSL not to idle-shut-down, in <code>.wslconfig</code>:</p>
+  <pre><code>[wsl2]
+networkingMode=mirrored
+vmIdleTimeout=-1            <span class="c"># never power off the VM for being idle</span></code></pre>
+  <p>Second — and this is the reliable part — <b>hold a WSL session open</b> so there's always a live process keeping the
+  VM warm. A hidden launcher in the Windows <b>Startup folder</b> (no admin needed) starts the service and then
+  parks on <code>sleep infinity</code>:</p>
+  <pre><code><span class="c">' %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\KeepAlive.vbs</span>
+Set sh = CreateObject("WScript.Shell")
+sh.Run "wsl.exe -d Ubuntu -u root -- /bin/sh -c ""systemctl start my-api; exec sleep infinity""", 0, False</code></pre>
+  <p>The <code>0</code> runs it with no window; <code>sleep infinity</code> never exits, so the VM never goes idle. It fires at
+  every logon and is a no-op if the service is already up.</p>
+  <blockquote><p><b>Caveat — "always-on" means "while logged in."</b> This keeps WSL alive for the logged-in user. To survive
+  logout/the login screen you'd need to run WSL from a true Windows <i>Service</i> (e.g. via NSSM or Task Scheduler "run
+  whether logged on or not") — more moving parts. For a personal box you sign into, the Startup launcher is enough.</p></blockquote>
+
+  <h2 id="security">The security model</h2>
+  <p>Three independent layers keep this tailnet-only. Any one would help; together they fail safe:</p>
+  <div class="cards">
+    <div class="stat"><div class="n">Bind the Tailscale IP</div><div class="l">socket listens on 100.x only — LAN/Wi-Fi address isn't served</div></div>
+    <div class="stat"><div class="n">Firewall 100.64.0.0/10</div><div class="l">inbound port admitted only from tailnet peers</div></div>
+    <div class="stat"><div class="n">Tailscale ACLs</div><div class="l">restrict which tailnet devices may reach the port</div></div>
+    <div class="stat"><div class="n">No port-forward</div><div class="l">router never forwards the port; nothing is public</div></div>
+  </div>
+  <p>Note what we did <b>not</b> do: bind <code>0.0.0.0</code>. That would expose the port on every interface — including
+  whatever coffee-shop Wi-Fi the laptop joins — and lean entirely on the firewall being correct. Binding the specific
+  Tailscale IP is the safer default for a machine that roams.</p>
+
+  <h2 id="recipe">The full recipe</h2>
+  <ol>
+    <li><b><code>%USERPROFILE%\.wslconfig</code></b>
+      <pre><code>[wsl2]
+networkingMode=mirrored
+vmIdleTimeout=-1
+
+[experimental]
+hostAddressLoopback=true</code></pre>
+    </li>
+    <li><b>Restart WSL:</b> <code>wsl --shutdown</code></li>
+    <li><b>Get the Tailscale IP:</b> <code>tailscale ip -4</code> (e.g. <code>100.83.31.91</code>)</li>
+    <li><b>Bind it</b> via a systemd drop-in at <code>/etc/systemd/system/&lt;svc&gt;.service.d/override.conf</code> (the <code>[Unit]</code>/<code>[Service]</code> block above).</li>
+    <li><b>Firewall</b> (elevated PowerShell): the <code>New-NetFirewallRule … -RemoteAddress 100.64.0.0/10</code> above.</li>
+    <li><b>Keep-alive launcher</b> in the Startup folder (the <code>KeepAlive.vbs</code> above).</li>
+    <li><b>Start it:</b> run the VBS (or <code>systemctl start &lt;svc&gt;</code> + a held-open session).</li>
+  </ol>
+
+  <h2 id="verify">Verify</h2>
+  <pre><code><span class="c"># inside WSL — bound to the Tailscale IP, not 0.0.0.0?</span>
+$ ss -tlnp | grep 5190
+LISTEN 0 511 <span class="g">100.83.31.91:5190</span> 0.0.0.0:* users:(("node",pid=126))
+
+<span class="c"># from the Windows host (needs hostAddressLoopback)</span>
+&gt; curl http://100.83.31.91:5190/health      <span class="g"># {"ok":true,...}</span>
+
+<span class="c"># from the Mac (the real test) — by IP or MagicDNS name</span>
+$ curl http://100.83.31.91:5190/health
+$ curl http://amitlaptop:5190/health        <span class="g"># {"ok":true,...}</span>
+
+<span class="c"># confirm the LAN IP is NOT served (should refuse)</span>
+&gt; curl http://192.168.4.105:5190/health     <span class="r"># connection refused — good</span></code></pre>
+
+  <h2 id="errors">Errors &amp; fixes</h2>
+  <table>
+    <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+    <tr><td>Service on <code>127.0.0.1</code> in WSL is reachable from Windows but nowhere else</td><td>WSL2 NAT — the guest has no route from the host's other interfaces</td><td><code>networkingMode=mirrored</code>, then bind the Tailscale IP</td></tr>
+    <tr><td>Even the Windows host can't reach the mirrored IP</td><td>host↔guest loopback over mirrored addresses is off</td><td><code>[experimental] hostAddressLoopback=true</code></td></tr>
+    <tr><td>Mac connection times out / refused</td><td>Windows Firewall blocks inbound (applies to WSL in mirrored mode)</td><td>inbound allow rule for the port, scoped to <code>100.64.0.0/10</code></td></tr>
+    <tr><td>Service flaps <code>Started→Stopping</code> every ~10s; works then dead</td><td>WSL2 idle-shutdown gracefully stops systemd; inbound can't wake the VM</td><td><code>vmIdleTimeout=-1</code> + a <code>sleep infinity</code> keep-alive session</td></tr>
+    <tr><td>Bind fails right after a reboot</td><td>service started before Tailscale assigned the IP</td><td><code>StartLimitIntervalSec=0</code> + <code>Restart=on-failure</code></td></tr>
+    <tr><td>Reachable from Wi-Fi/LAN too (didn't want that)</td><td>bound <code>0.0.0.0</code> instead of the Tailscale IP</td><td>bind the specific <code>100.x</code> IP; keep the scoped firewall rule</td></tr>
+  </table>
+
+  <h2 id="keywords">Keywords / tags</h2>
+  <p class="kw">
+    <b>WSL2 Tailscale</b> · <b>expose WSL2 service</b> · WSL2 reachable from another machine ·
+    <b>WSL2 mirrored networking</b> · networkingMode=mirrored · <b>hostAddressLoopback</b> ·
+    WSL2 port forwarding · bind Tailscale IP · <b>WSL idle shutdown</b> · vmIdleTimeout=-1 ·
+    keep WSL2 running · keep WSL2 alive · sleep infinity keep-alive · <b>systemd service in WSL2</b> ·
+    Hyper-V firewall WSL · New-NetFirewallRule · 100.64.0.0/10 · MagicDNS · tailnet-only ·
+    self-hosted home server · expose localhost over Tailscale · Windows 11 WSL2 server
+  </p>
+
+  <footer>
+    Tailnet-only by design — bound to the Tailscale IP, firewalled to the tailnet range, never port-forwarded.<br>
+    Self-contained HTML · inline SVG diagrams · no external assets.<br>
+    <b>Debugged &amp; written by Claude</b> — Anthropic Opus&nbsp;4.8 (<code>claude-opus-4-8</code>) · June&nbsp;26,&nbsp;2026.
+  </footer>
+
+</main>
+</body>
+</html>

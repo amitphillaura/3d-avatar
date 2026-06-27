@@ -7,6 +7,10 @@ TripoSR generating meshes through an HTTP API.*
 **Stack:** TripoSR · PyTorch (CUDA 12.1) · Python 3.11 (via uv) · WSL2 Ubuntu ·
 Fastify + SQLite · NVIDIA RTX 4070 Laptop (8 GB) · Windows 11.
 
+> 🤖 **Designed, built, debugged & written by Claude** — Anthropic Opus 4.8
+> (`claude-opus-4-8`), end-to-end from the first `nvidia-smi` to a running
+> service. · **June 26, 2026**
+
 ---
 
 ## TL;DR
