@@ -3,7 +3,7 @@
  * Routes: 'home' | 'motion-capture' | 'object-detection'
  */
 
-const VALID_ROUTES = ['home', 'motion-capture', 'object-detection', 'vrm-editor'];
+const VALID_ROUTES = ['home', 'motion-capture', 'object-detection', 'vrm-editor', 'mesh'];
 
 let _current = 'home';
 

@@ -13,6 +13,7 @@
     <script src="/mediapipe/holistic/holistic.js"></script>
     <link rel="stylesheet" href="/src/home.css" />
     <link rel="stylesheet" href="/src/vrmEditor.css" />
+    <link rel="stylesheet" href="/src/mesh.css" />
   </head>
   <body>
 
@@ -51,6 +52,16 @@
           <div class="tool-card-body">
             <span class="tool-card-title">VRM Editor</span>
             <span class="tool-card-desc">Import and customize VRM character models with expressions, spring physics, and live capture.</span>
+            <span class="tool-card-badge tool-card-badge--new">New</span>
+          </div>
+          <span class="tool-card-arrow" aria-hidden="true">&#8594;</span>
+        </button>
+
+        <button class="tool-card tool-card--mesh" id="card-mesh" type="button">
+          <div class="tool-card-icon">3D</div>
+          <div class="tool-card-body">
+            <span class="tool-card-title">Photo &rarr; 3D</span>
+            <span class="tool-card-desc">Turn a single photo into a 3D mesh with the TripoSR engine.</span>
             <span class="tool-card-badge tool-card-badge--new">New</span>
           </div>
           <span class="tool-card-arrow" aria-hidden="true">&#8594;</span>
@@ -673,6 +684,48 @@
     </div>
 
     <!-- ═══════════════════════════════════════════
+         VIEW: Photo → 3D
+    ═══════════════════════════════════════════ -->
+    <div id="view-mesh" class="view mesh-view" hidden>
+      <header class="detection-header">
+        <button id="mesh-back-btn" type="button" class="mc-back-btn">&#8592; Home</button>
+        <h2 class="detection-title">Photo &rarr; 3D</h2>
+        <div id="mesh-health" class="mesh-health" aria-live="polite">Checking service…</div>
+      </header>
+
+      <div class="mesh-layout">
+        <section class="mesh-controls">
+          <label class="btn mesh-file-label">
+            Choose photo
+            <input id="mesh-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+          </label>
+          <div id="mesh-drop" class="mesh-drop">
+            Drop an image here, or choose a file.<br />
+            A single subject on a plain background works best.
+          </div>
+          <img id="mesh-preview-img" class="mesh-preview-img" alt="Selected photo" hidden />
+
+          <div class="mesh-options">
+            <label class="mesh-check"><input id="mesh-remove-bg" type="checkbox" checked /> Remove background</label>
+            <label class="mesh-check"><input id="mesh-texture" type="checkbox" checked /> Texture</label>
+          </div>
+
+          <button id="mesh-generate" type="button" class="btn" disabled>Generate 3D</button>
+          <div id="mesh-status" class="detection-status" aria-live="polite">Pick a photo to start.</div>
+          <div class="mesh-progress-wrap" id="mesh-progress-wrap" hidden>
+            <div class="mesh-progress-bar" id="mesh-progress-bar"></div>
+          </div>
+          <div id="mesh-result-meta" class="mesh-result-meta" hidden></div>
+          <a id="mesh-download" class="btn btn--ghost" download="mesh.glb" hidden>Download .glb</a>
+        </section>
+
+        <section class="mesh-viewport">
+          <canvas id="mesh-canvas" class="mesh-canvas" aria-label="3D mesh preview"></canvas>
+        </section>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
          VIEW: VRM Editor
     ═══════════════════════════════════════════ -->
     <div id="view-vrm-editor" class="view vrm-editor-view" hidden>
@@ -949,6 +1002,7 @@
       import { initRouter, navigate } from '/src/router.js';
       import { initStudio } from '/src/studio.js';
       import { initVrmEditor } from '/src/vrmEditor.js';
+      import { initMesh } from '/src/mesh.js';
 
       const wire = (id, handler) =>
         document.getElementById(id)?.addEventListener('click', handler);
@@ -963,14 +1017,17 @@
       wire('card-motion-capture', () => navigate('motion-capture'));
       wire('card-object-detection', () => navigate('object-detection'));
       wire('card-vrm-editor', () => navigate('vrm-editor'));
+      wire('card-mesh', () => navigate('mesh'));
 
       // Back buttons
       wire('mc-back-btn', () => navigate('home'));
       wire('od-back-btn', () => navigate('home'));
       wire('vrm-back-btn', () => navigate('home'));
+      wire('mesh-back-btn', () => navigate('home'));
 
       try { initStudio(); } catch (err) { console.error('[studio] init failed', err); }
       try { initVrmEditor(); } catch (err) { console.error('[vrmEditor] init failed', err); }
+      try { initMesh(); } catch (err) { console.error('[mesh] init failed', err); }
 
       // Queue sidebar live polling
       const queueList = document.getElementById('queue-sidebar-list');

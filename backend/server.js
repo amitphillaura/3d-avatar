@@ -6,6 +6,7 @@ import { registerSegmentRoutes, registerVideoRoutes } from "./routes/index.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerDetectionRoutes } from "./routes/detection.js";
 import { registerAnimalRoutes } from "./routes/animal.js";
+import { registerMeshRoutes } from "./routes/mesh.js";
 import { ensureDataDirs } from "./lib/paths.js";
 import { getDb } from "./db/index.js";
 
@@ -30,6 +31,7 @@ registerSegmentRoutes(app);
 registerFileRoutes(app);
 registerDetectionRoutes(app);
 registerAnimalRoutes(app);
+registerMeshRoutes(app);
 
 try {
   await app.listen({ port: PORT, host: HOST });
