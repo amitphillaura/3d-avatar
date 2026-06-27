@@ -11,6 +11,8 @@
     "test:motion-lib": "node --test scripts/test-motion-lib.mjs",
     "backend": "node backend/server.js",
     "backend:setup": "bash scripts/setup-motion-backend.sh",
+    "mesh:setup": "bash scripts/setup-mesh-backend.sh",
+    "mesh:api": "node backend/server.js",
     "dev:full": "npm run backend & npm run dev",
     "start:full": "bash scripts/start-prod.sh",
     "preview": "vite preview --host 0.0.0.0 --port 5180",

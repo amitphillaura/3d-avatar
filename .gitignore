@@ -3,6 +3,10 @@ dist/
 data/
 backend/.venv/
 backend/models/
+# Cloned mesh engines (TripoSR, …) are pulled by scripts/setup-mesh-backend.sh.
+# Ignore the clones but keep our committed CPU shim.
+backend/engines/*
+!backend/engines/torchmcubes_shim.py
 # YOLO weights auto-downloaded by ultralytics to cwd on first detection
 yolov8n.pt
 *.pt

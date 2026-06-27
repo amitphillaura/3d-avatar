@@ -1,0 +1,20 @@
+# Mesh API (photo -> 3D) Python deps that the engine's own requirements don't
+# reliably provide. Kept separate from the MediaPipe motion stack.
+#
+# IMPORTANT: torch/torchvision and the engine repos (TripoSR, ...) are installed
+# by the setup script, which also OWNS their pins:
+#
+#     npm run mesh:setup        # -> scripts/setup-mesh-backend.sh
+#
+# Do NOT re-pin packages the engine already pins (transformers, huggingface-hub,
+# omegaconf, einops, trimesh, Pillow, numpy, ...). Loose ranges here will
+# silently upgrade them past the engine's tested versions.
+
+# rembg made onnxruntime an optional extra, so it isn't pulled automatically.
+# Pull the CPU runtime explicitly so background removal works. (Use
+# onnxruntime-gpu only with a matching CUDA/cuDNN install.)
+onnxruntime>=1.17
+
+# Marching-cubes backend for the torchmcubes CPU shim (see
+# backend/engines/torchmcubes_shim.py). Also installed by the setup script.
+PyMCubes>=0.1.4

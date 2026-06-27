@@ -1,0 +1,23 @@
+[Unit]
+Description=Phlix Mesh API (photo -> 3D, Phase 1)
+Documentation=file:///mnt/c/Users/amits/projects/Phlix-Img2Model/backend/README-mesh.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/c/Users/amits/projects/Phlix-Img2Model
+# Local only — do NOT expose publicly. Switch to the Tailscale IP when ready.
+Environment=MOTION_API_HOST=127.0.0.1
+Environment=MOTION_API_PORT=5190
+Environment=NODE_ENV=production
+# Include the WSL lib dir so /health can find nvidia-smi (libcuda is already
+# on the linker path via /etc/ld.so.conf.d/ld.wsl.conf).
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/wsl/lib
+ExecStart=/usr/bin/node backend/server.js
+Restart=on-failure
+RestartSec=3
+# Logs: journalctl -u mesh-api  (or follow with -f)
+
+[Install]
+WantedBy=multi-user.target

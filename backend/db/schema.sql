@@ -58,6 +58,20 @@ CREATE TABLE IF NOT EXISTS frames (
   PRIMARY KEY (video_id, frame_index)
 );
 
+CREATE TABLE IF NOT EXISTS mesh_jobs (
+  id           TEXT PRIMARY KEY,
+  status       TEXT NOT NULL DEFAULT 'queued',  -- queued|running|ready|failed
+  stage        TEXT NOT NULL DEFAULT 'mesh',    -- mesh|rig
+  engine       TEXT NOT NULL,                   -- triposr|sf3d|hunyuan3d
+  source_path  TEXT NOT NULL,                   -- uploaded image
+  result_path  TEXT,                            -- result.glb (phase 1)
+  vrm_path     TEXT,                            -- result.vrm (phase 2)
+  error        TEXT,
+  params_json  TEXT,                            -- {remove_bg, texture, ...}
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
 CREATE INDEX IF NOT EXISTS idx_segments_video ON segments(video_id);
 CREATE INDEX IF NOT EXISTS idx_segments_word ON segments(word_prompt);
