@@ -93,5 +93,5 @@ torch **2.5.1+cu121** · **transformers 4.35.0** (5.x breaks the TripoSR ViT che
 ## Git
 
 - Branch `claude/triposr-mesh-api-pzhfpt`, HEAD `443b6cf`, pushed to origin.
-- 6 commits: build spec → Phase 1 API → Tailscale blog → firewall correction → v2 API → orientation fix.
-- See "Merge status" note at the bottom for main.
+- Commits: build spec → Phase 1 API → Tailscale blog → firewall correction → v2 API → orientation fix → this handoff.
+- **Open PR → `main`: [#1](https://github.com/amitphillaura/3d-avatar/pull/1)** — ready to merge. Deliberately *not* auto-merged: this `/mnt/c` checkout is the live deployment dir the service reads from, so checking out `main` here would break the worker. Merge the PR on GitHub when ready.
