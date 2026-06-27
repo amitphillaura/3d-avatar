@@ -1,97 +1,74 @@
 # Handoff — Photo → 3D (client side)
 
-**Status: client built, committed, and deployed for Tailscale testing. NOT merged to
-`main`. Repo decoupling is planned but NOT executed (needs your go-ahead).**
+**Status: DONE — merged to `main`, pushed to origin, deployed on :5180.**
+The mesh server is decoupled into its own repo and SF3D is live.
 
-Branch: `claude/objective-matsumoto-e47b77` · commit `3bec2ac` (client-only).
+3d-avatar is a **pure client**: the `#mesh` view + a thin backend proxy to the
+remote mesh service. No engine/server code lives here.
 
----
+## What it is
 
-## ✅ Test it now (over Tailscale, from any tailnet device)
+`/#mesh` ("Photo → 3D") — upload a photo, get a 3D `.glb`. Two quality tiers:
 
-Deployed on this Mac mini (`amits-mac-mini`), served on **:5181**, bound to `0.0.0.0`:
+- **Fast — TripoSR** (~1 min, vertex-color "clay").
+- **High Quality — SF3D** (UV-textured, ~1 min). The panel is health-aware: it
+  auto-enables when `/api/mesh/health.engines` includes a non-TripoSR engine.
 
-- **http://amits-mac-mini.tail07c943.ts.net:5181/#mesh**  ← use the FULL MagicDNS name
-- or **http://100.83.31.91… no →  http://100.92.73.74:5181/#mesh**  (this Mac's tailnet IP)
-- ⚠️ The bare short name `http://amits-mac-mini:5181` returns **403** — Vite's
-  `allowedHosts` only allows `*.ts.net`. Use the full MagicDNS name or the IP.
+The viewer smooths untextured TripoSR meshes (computed normals) and preserves
+SF3D's baked PBR material. Meshes are canonical Y-up / +Z-front, so they render
+upright and facing the camera with no client-side rotation.
 
-Drop a photo (single subject, plain background) → Generate 3D → ~50–66 s → upright,
-vertex-colored GLB in the viewer + Download. Re-submitting the same image dedups
-(instant). Webcam tools won't work over plain-HTTP Tailscale (need HTTPS/localhost),
-but Photo → 3D uses file upload, so it's fine.
+## Architecture (decoupled)
 
-### Operate the test server
-- Preview (`:5181`) log: `…/scratchpad/preview5181.log`; stop: `lsof -ti tcp:5181 | xargs kill`.
-- Mesh-enabled local backend on `:5190` (proxy target) is running from this worktree.
-- This is a **manual** server (survives until reboot/kill). It does **not** touch the
-  other agent's launchd prod on `:5180`. For a durable deploy, merge to `main` later
-  and let the existing autostart serve it.
+```
+3d-avatar client (this repo)            phlix-mesh-api (separate repo, on the GPU box)
+  #mesh UI + MeshViewer                   Fastify + SQLite job queue
+  backend/routes/mesh.js  ── proxy ──►    backend/worker/generate_mesh.py (TripoSR | SF3D)
+  /api/mesh/* (same-origin)   Tailscale    bound to the Tailscale IP, tailnet-only
+```
 
----
+- **Mesh server repo:** https://github.com/amitphillaura/phlix-mesh-api (private).
+  Runs on the RTX 4070 / WSL2 box, reachable at `amitlaptop:5190` over Tailscale.
+- **Proxy:** `backend/routes/mesh.js` forwards `/api/mesh/*` to the remote
+  (`MESH_REMOTE_BASE`, default `http://amitlaptop:5190`, IP fallback), keeps the
+  browser same-origin, adds `Content-Length`, caches GLBs to `data/mesh/`.
 
-## What was built (3d-avatar = CLIENT only)
+## Key files (this repo)
 
 | File | Role |
-|---|---|
-| `backend/routes/mesh.js` | **Proxy** `/api/mesh/*` → remote service (MagicDNS `amitlaptop:5190`, IP fallback). Offline→503, adds `Content-Length`, caches GLBs to `data/mesh/`. Keeps the browser same-origin. |
-| `src/mesh.js` | Controller: upload/drop → submit → poll (live progress) → preview → download; graceful degradation + offline handling. |
-| `src/meshViewer.js` | Clean, reusable GLB viewer (auto-frames; enables vertex colors for materialless TripoSR meshes). |
-| `src/mesh.css`, `index.html`, `src/router.js` | "Photo → 3D" home card + `#mesh` view + wiring. |
+|------|------|
+| `src/mesh.js` | Controller: upload/drop → submit → poll → preview → download; two engine modes; health-aware HQ panel |
+| `src/meshViewer.js` | Reusable GLB viewer (auto-frame; smooth TripoSR, keep SF3D PBR) |
+| `backend/routes/mesh.js` | Tailscale proxy to the remote mesh API |
+| `src/mesh.css`, `index.html`, `src/router.js` | "Photo → 3D" home card + `#mesh` view |
 
-No engine/server/Python code — this repo stays a pure consumer of the remote API.
+## Deploy
 
-Config: proxy target overridable via `MESH_REMOTE_BASE` / `MESH_REMOTE_FALLBACK` env.
+Lives on the durable launchd prod **http://127.0.0.1:5180/#mesh** (also reachable
+over Tailscale at `http://amits-mac-mini.tail07c943.ts.net:5180/#mesh` — full
+MagicDNS name or IP `100.92.73.74`; the bare short name 403s via Vite allowedHosts).
+`main` is pushed to origin.
 
----
+## Status of the moving parts
 
-## ⚠️ The repo-decoupling situation (READ THIS)
+- **SF3D** shipped by the Windows agent, verified end-to-end (UV-textured,
+  upright, forward-facing). TripoSR stays the default.
+- **Hunyuan3D** deferred — its textured stage needs ~21 GB, doesn't fit the 8 GB
+  4070. Reserved behind the same flag for a bigger GPU.
+- **Orientation:** SF3D initially came out facing −Z (backwards); fixed with a
+  180° yaw in `phlix-mesh-api`'s `run_sf3d` (single rotation, verified forward).
 
-The **builder agent accidentally pushed the mesh SERVER into the 3d-avatar repo** as
-branch `claude/triposr-mesh-api-pzhfpt` (origin). That server was supposed to be its
-own project (`Phlix-Img2Model`, which is where it actually runs on the Windows box —
-the canonical copy). That branch contains the TripoSR engine, queue/db, deploy
-scripts, blog posts, AND its own `backend/routes/mesh.js` (the real server) +
-`src/meshClient.js`.
+## Remaining (optional)
 
-**Collision:** both that branch and mine define `backend/routes/mesh.js` — theirs is
-the *server*, mine is the *client proxy*. They must NOT be merged together.
+- Delete the superseded branches once you're sure: `claude/sf3d-engine`
+  (phlix-mesh-api, merged) and `claude/triposr-mesh-api-pzhfpt` (3d-avatar,
+  replaced by phlix-mesh-api).
+- Phase 2 bridge: `phlix-mesh-api` reserves `/jobs/:id/rig` + `/vrm` (501 today).
+  Once auto-rig lands, add a "send to VRM Editor" handoff so a generated mesh
+  becomes drivable.
 
-### Decoupling plan (NOT yet done — confirm before executing)
-1. **3d-avatar = client.** Keep this branch (my proxy + UI). Do not merge the builder
-   branch into `main`.
-2. **Mesh server → its own repo.** The authoritative copy already lives on the Windows
-   box at `/mnt/c/Users/amits/projects/Phlix-Img2Model/`. Best done BY the builder
-   agent / on the Windows box: `git init` there (if not already), push to a NEW GitHub
-   repo (e.g. `phlix-mesh-api`). Do not snapshot from the stray 3d-avatar branch — that
-   would fork a third copy.
-3. **Clean up the stray branch** `claude/triposr-mesh-api-pzhfpt` from the 3d-avatar
-   remote once its content is safe in the new repo. (Irreversible-ish — your call.)
+## Provenance
 
-### Deliberately NOT done unattended (need your go-ahead)
-- Creating/pushing the new GitHub repo for the server.
-- Deleting the stray `claude/triposr-mesh-api-pzhfpt` branch.
-- Merging this client branch to `main` (also blocked right now: `main`'s working tree
-  has the other agent's uncommitted **VRM Local Models** WIP).
-
----
-
-## Server status (builder branch — FYI, already done by the builder)
-
-The remote mesh API is v2 and shipped nearly the whole tightening wishlist: numeric
-`progress`, full self-describing `result{vertices,triangles,bytes,…}`, honest
-`params_applied` (texture:true → vertex colors), `timing`, `result_url`/`thumbnail_url`/
-`input_url` (no path leaks), `ETag`/`Content-Length`, dedup, single-GPU queue +
-`queue_position`/ETA, and **canonical orientation** (Y-up/+Z — fixed live tonight, no
-client rotation needed). My client already consumes all of it.
-
----
-
-## Open follow-ups (next session)
-- Confirm + execute the decoupling steps above.
-- When `main` is clean: merge this client branch, re-enable autostart for a durable
-  `:5180` deploy (kill the manual `:5181`).
-- Phase 2 bridge: server reserves `/jobs/:id/rig` + `/vrm` (501 today). Once rigging
-  lands, add a "send to VRM Editor" handoff so a generated mesh becomes drivable.
-- Nice-to-haves: job-history strip using `thumbnail_url`; busy/queue indicator on the
-  home card using `/health`.
+Built overnight by two Claude agents (this Mac client + the Windows GPU engine
+agent) coordinating via a shared git repo and the Tailscale health endpoint.
+Write-ups in `phlix-mesh-api/docs/blog-*.html`.
