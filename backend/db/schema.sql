@@ -66,11 +66,24 @@ CREATE TABLE IF NOT EXISTS mesh_jobs (
   source_path  TEXT NOT NULL,                   -- uploaded image
   result_path  TEXT,                            -- result.glb (phase 1)
   vrm_path     TEXT,                            -- result.vrm (phase 2)
-  error        TEXT,
-  params_json  TEXT,                            -- {remove_bg, texture, ...}
+  error        TEXT,                            -- human message
+  error_code   TEXT,                            -- structured: bad_image|oom|model_load_failed|...
+  error_stage  TEXT,                            -- preprocess|model_load|inference|export
+  params_json  TEXT,                            -- requested {remove_bg, texture, ...}
+  params_applied_json TEXT,                     -- what actually happened
+  result_json  TEXT,                            -- {bytes, vertices, triangles, bbox, ...}
+  sha256       TEXT,                            -- dedup key: image bytes + params
+  progress     INTEGER NOT NULL DEFAULT 0,      -- 0-100 while running
+  started_at   TEXT,                            -- when status -> running
+  finished_at  TEXT,                            -- when status -> ready|failed
+  duration_ms  INTEGER,                         -- finished - started
+  queue_wait_ms INTEGER,                        -- started - created
   created_at   TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- NOTE: indexes on the newer columns are created in ensureMeshColumns() after the
+-- columns are guaranteed to exist (a pre-existing table won't have them yet, and
+-- this file is exec'd on every getDb() before the migration runs).
 
 CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
 CREATE INDEX IF NOT EXISTS idx_segments_video ON segments(video_id);

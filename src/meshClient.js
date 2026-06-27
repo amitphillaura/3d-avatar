@@ -34,6 +34,7 @@ export function submitMesh(image, opts = {}) {
   if (opts.engine) form.append("engine", opts.engine);
   if (opts.removeBg !== undefined) form.append("remove_bg", String(opts.removeBg));
   if (opts.texture !== undefined) form.append("texture", String(opts.texture));
+  if (opts.normalize !== undefined) form.append("normalize", String(opts.normalize));
   return api("/api/mesh/jobs", { method: "POST", body: form });
 }
 
@@ -57,6 +58,16 @@ export function deleteMeshJob(jobId) {
 /** Direct URL for the finished GLB (stream, model/gltf-binary). */
 export function meshResultUrl(jobId) {
   return `${API_BASE}/api/mesh/jobs/${jobId}/result`;
+}
+
+/** Server-rendered preview PNG of the result (job-history thumbnails). */
+export function meshThumbnailUrl(jobId) {
+  return `${API_BASE}/api/mesh/jobs/${jobId}/thumbnail`;
+}
+
+/** The background-removed input the engine actually saw (PNG). */
+export function meshInputUrl(jobId) {
+  return `${API_BASE}/api/mesh/jobs/${jobId}/input`;
 }
 
 /**

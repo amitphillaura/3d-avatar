@@ -54,6 +54,14 @@ export function meshVrmPath(jobId) {
   return join(meshJobDir(jobId), "result.vrm");
 }
 
+export function meshThumbnailPath(jobId) {
+  return join(meshJobDir(jobId), "thumbnail.png");
+}
+
+export function meshInputCutoutPath(jobId) {
+  return join(meshJobDir(jobId), "input_cutout.png");
+}
+
 export function ensureMeshDirs() {
   for (const dir of [DATA_ROOT, MESH_ROOT]) {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
