@@ -41,6 +41,21 @@ function currentEngine() {
   return mode === "fast" ? "triposr" : $("mesh-hq-engine")?.value || "sf3d";
 }
 
+// Disable HQ engine options that aren't installed, and auto-select an available
+// one — so when (say) only Hunyuan3D lands, the panel targets it without the user
+// having to switch off the SF3D default. (SF3D is gated on HF / may be deferred.)
+function syncHqEngineSelect() {
+  const sel = $("mesh-hq-engine");
+  if (!sel) return;
+  Array.from(sel.options).forEach((opt) => {
+    opt.disabled = !availableEngines.includes(opt.value);
+  });
+  if (!availableEngines.includes(sel.value)) {
+    const firstAvail = Array.from(sel.options).find((o) => availableEngines.includes(o.value));
+    if (firstAvail) sel.value = firstAvail.value;
+  }
+}
+
 // Is the chosen engine actually installed on the server right now?
 function engineReady() {
   return availableEngines.includes(currentEngine());
@@ -91,6 +106,7 @@ function refreshModeUI() {
     unavail.hidden = true;
   } else {
     if (note) note.textContent = "Higher fidelity — UV-textured, much cleaner on people.";
+    syncHqEngineSelect();
     if (!engineReady()) {
       unavail.hidden = false;
       unavail.innerHTML =
