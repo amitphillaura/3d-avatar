@@ -87,18 +87,24 @@ export class MeshViewer {
     obj.traverse((node) => {
       if (!node.isMesh) return;
       const geo = node.geometry;
-      // Smooth shading: TripoSR's marching-cubes output is faceted, which reads as
-      // blocky "clay." Recomputing vertex normals + non-flat shading smooths it a lot.
-      if (geo) {
+      const mat = node.material;
+      const textured = !!(mat && mat.map); // SF3D ships a real UV/PBR material
+
+      // Smooth shading. TripoSR's marching-cubes output is faceted ("clay"), so
+      // recompute smooth normals. For a textured PBR mesh (SF3D) keep its own
+      // normals if present so the bake reads correctly; only fill in if missing.
+      if (geo && (!textured || !geo.getAttribute("normal"))) {
         geo.computeVertexNormals();
       }
-      const mat = node.material;
+
       if (mat) {
-        // Show vertex colors when present but materialless (the TripoSR case).
-        if (geo?.getAttribute("color")) mat.vertexColors = true;
         mat.flatShading = false;
-        if ("roughness" in mat) mat.roughness = 0.85; // matte, not plastic
-        if ("metalness" in mat) mat.metalness = 0.0;
+        if (!textured) {
+          // Untextured TripoSR: show vertex colors on a matte surface.
+          if (geo?.getAttribute("color")) mat.vertexColors = true;
+          if ("roughness" in mat) mat.roughness = 0.85; // matte, not plastic
+          if ("metalness" in mat) mat.metalness = 0.0;
+        }
         mat.needsUpdate = true;
       }
     });
